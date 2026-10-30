@@ -164,7 +164,7 @@ const defaultSettings={textProvider:"pollinations",geminiKey:"",geminiModel:"gem
 const defaultForm={mode:"ai",age:"preschool",genre:"Bedtime story",approach:"Read-aloud",topic:"",setting:"",idea:"",art:"watercolor",pages:20,lang:"English (UK)",chars:"",own:"",
   author:"",trim:"8.5x8.5",paper:"std",layout:"top",pageColor:"#FFFDF7",font:"Fredoka",aiDisclosure:true};
 const state={tab:"idea",settings:{...defaultSettings},form:{...defaultForm},book:null,busy:false,abort:false,showSettings:false,seedTrials:null,thumbs:false};
-try{Object.assign(state.settings,JSON.parse(localStorage.getItem("sbs_settings")||"{}"))}catch(e){}
+try{Object.assign(state.settings,JSON.parse(localStorage.getItem("sbs_settings")||"{}"))}catch(e){}\nif(!state.settings.pollTextModel||state.settings.pollTextModel==="openai")state.settings.pollTextModel="openai/gpt-4o-mini";
 function saveSettings(){try{localStorage.setItem("sbs_settings",JSON.stringify(state.settings))}catch(e){}}
 
 let db=null;
@@ -207,7 +207,7 @@ async function llm(sys,user){
   }
   if(s.textProvider==="pollinations"){
     const h={"Content-Type":"application/json"};if(s.pollKey)h.Authorization="Bearer "+s.pollKey;
-    const j=await httpJSON("https://text.pollinations.ai/openai",{method:"POST",headers:h,body:JSON.stringify({model:s.pollTextModel||"openai/gpt-4o-mini",max_completion_tokens:8192,temperature:0.7,seed:rnd(),private:true,messages:[{role:"system",content:sys},{role:"user",content:user}]})});
+    const j=await httpJSON("https://text.pollinations.ai/openai",{method:"POST",headers:h,body:JSON.stringify({model:s.pollTextModel||"openai/gpt-4o-mini",max_tokens:8192,temperature:0.4,seed:rnd(),private:true,messages:[{role:"system",content:sys+"\\nReturn compact JSON. Keep each page text to 1-3 short sentences and each scene to one concise sentence. Do not add explanations."},{role:"user",content:user}]})});
     return j.choices?.[0]?.message?.content||"";
   }
   throw new Error("Story writing is switched off in Settings. Choose a provider, or fill in the story by hand on the Story tab.");
@@ -237,7 +237,7 @@ async function createStory(){
     if(state.settings.textProvider==="none"){state.book=newBook({title:"Untitled",pages:own.map(t=>({text:t,scene:"",characters:[]}))});return}
   }
   const total=own?own.length:Math.max(8,Math.min(120,Number(f.pages)||20));
-  const batchSize=8;let bookData=null;const allPages=[];
+  const batchSize=3;let bookData=null;const allPages=[];
   for(let start=0;start<total;start+=batchSize){
     if(state.abort)throw new Error("Stopped. No partial story was saved.");
     const count=Math.min(batchSize,total-start);let sys=STORY_SYS,user;

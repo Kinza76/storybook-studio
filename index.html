@@ -160,7 +160,7 @@ const RISKY=["mickey","minnie","disney","pixar","pokemon","pikachu","mario","lui
 
 /* ============ state & storage ============ */
 const defaultSettings={textProvider:"pollinations",geminiKey:"",geminiModel:"gemini-2.5-flash",oaBase:"https://api.groq.com/openai/v1",oaKey:"",oaModel:"openai/gpt-oss-120b",
-  pollTextModel:"",imgProvider:"pollinations",imgModel:"",pollKey:"",hfToken:"",hfModel:"black-forest-labs/FLUX.1-schnell",customTpl:"",imgPx:1280,delay:46000,v:3};
+  pollTextModel:"",imgProvider:"pollinations",imgModel:"",pollKey:"",hfToken:"",hfModel:"black-forest-labs/FLUX.1-schnell",customTpl:"",imgPx:1280,delay:46000,cropBottom:10,v:3};
 const defaultForm={mode:"ai",age:"preschool",genre:"Bedtime story",approach:"Read-aloud",topic:"",setting:"",idea:"",art:"watercolor",pages:20,lang:"English (UK)",chars:"",own:"",
   author:"",trim:"8.5x8.5",paper:"std",layout:"top",pageColor:"#FFFDF7",font:"Fredoka",aiDisclosure:true};
 const state={tab:"idea",settings:{...defaultSettings},form:{...defaultForm},book:null,busy:false,abort:false,showSettings:false,seedTrials:null,thumbs:false};
@@ -236,7 +236,8 @@ Hard rules:
 - Each character's "visual" is one fixed sentence that is reused for every illustration: species or age, body shape, exact colours, exact clothing, and two distinguishing marks. Keep it concrete and unchanging.
 - Each page "scene" describes only what is drawn: setting, action, expressions, camera angle. No text, signs or letters in the picture. Write it so it makes sense on its own.
 - Each page lists the exact character names that appear in its scene.
-Schema: {"title":"","subtitle":"","blurb":"60-90 word back-cover text without spoilers","keywords":["7 short search phrases a parent would type"],"characters":[{"name":"","role":"","visual":""}],"cover_scene":"front cover scene with the main character(s)","pages":[{"text":"","scene":"","characters":["name"]}]}`;
+- Every page needs a different "shot": a new camera angle AND a new pose or action for the characters compared with the previous page (wide view, close-up, from above, low angle, side view, back view, over the shoulder, running, sitting, reaching, hugging). Never repeat a pose. Vary the place, time of day and expressions.
+Schema: {"title":"","subtitle":"","blurb":"60-90 word back-cover text without spoilers","keywords":["7 short search phrases a parent would type"],"characters":[{"name":"","role":"","visual":""}],"cover_scene":"front cover scene with the main character(s)","pages":[{"text":"","scene":"","shot":"camera angle and pose, under 15 words","characters":["name"]}]}`;
 function formBrief(){const f=state.form,a=AGES.find(x=>x.id===f.age);
   return `Age group: ${a.label}. Words per page: ${a.words}.
 Language and spelling: ${f.lang}.
@@ -264,7 +265,7 @@ async function createStory(){
 }
 const RULES=STORY_SYS.split("Schema:")[0];
 const PLAN_SYS=RULES+`Schema: {"title":"","subtitle":"","blurb":"60-90 words","keywords":["7 short phrases"],"characters":[{"name":"","role":"","visual":""}],"cover_scene":"","beats":["one short sentence per page"]}. Keep every value short.`;
-const PAGES_SYS=RULES+`Schema: {"pages":[{"text":"","scene":"under 40 words","characters":["name"]}]}. Return only the pages asked for.`;
+const PAGES_SYS=RULES+`Schema: {"pages":[{"text":"","scene":"under 40 words","shot":"camera angle and pose, under 15 words","characters":["name"]}]}. Return only the pages asked for.`;
 /* Small requests, so even a model that "thinks" first never runs out of room. */
 async function createStorySteps(own){
   const f=state.form,N=own?own.length:(Number(f.pages)||20),gap=state.settings.stepGap??(state.settings.textProvider==="pollinations"?31000:0);state.abort=false;
@@ -292,31 +293,34 @@ function newBook(j){
   return {title:j.title||"Untitled",subtitle:j.subtitle||"",blurb:j.blurb||"",keywords:j.keywords||[],style:art.t,seed:rnd(),
     characters:(j.characters||[]).map(c=>({name:c.name||"",role:c.role||"",visual:c.visual||""})),
     cover:{scene:j.cover_scene||"",img:null,imgW:0,seedOff:0},
-    pages:j.pages.map(p=>({id:uid(),text:p.text||"",scene:p.scene||"",characters:Array.isArray(p.characters)?p.characters:[],img:null,imgW:0,seedOff:0}))};
+    pages:j.pages.map(p=>({id:uid(),text:p.text||"",scene:p.scene||"",shot:p.shot||"",characters:Array.isArray(p.characters)?p.characters:[],img:null,imgW:0,seedOff:0}))};
 }
 
 /* ============ image generation ============ */
-function imgPrompt(scene,names){
+const SHOTS=["wide establishing shot, characters small in the scene","medium shot, character in the middle of an action","close-up on the character's face and expression","view from above, looking down","low angle looking up at the character","side view, character moving across the scene","over-the-shoulder view","character seen from behind looking at something","character small in the corner, big scenery","two-thirds view, character interacting with an object"];
+function shotFor(which){if(which==="cover")return "";const p=state.book.pages[which];return (p&&p.shot&&p.shot.trim())||SHOTS[which%SHOTS.length]}
+function imgPrompt(scene,names,shot){
   const b=state.book;const set=(names||[]).map(n=>String(n).toLowerCase());
   const chars=b.characters.filter(c=>set.includes(c.name.toLowerCase())).map(c=>`${c.name}: ${c.visual}`).join(". ");
   const tail=" Same character designs and colours as every other page. No text, no letters, no words, no watermark, no logo.";
-  let head=`${b.style}.`;let mid=chars?` ${chars}.`:"";let sc=` Scene: ${scene}.`;
+  let head=`${b.style}.`;let mid=chars?` ${chars}.`:"";let sc=` Scene: ${scene}.${shot?` Composition: ${shot}.`:""}`;
   const room=900-tail.length-head.length-sc.length;if(mid.length>room)mid=mid.slice(0,Math.max(0,room));
   return (head+mid+sc+tail).slice(0,1000);
 }
 function imgSize(){const [W,H]=TRIMS[state.form.trim];const a=(W+.125)/(H+.25),L=Number(state.settings.imgPx)||1280;
   let w,h;if(a>=1){w=L;h=L/a}else{h=L;w=L*a}const r=n=>Math.max(256,Math.round(n/64)*64);return [r(w),r(h)]}
-async function blobToJpeg(blob){
+async function blobToJpeg(blob,crop=0){
   const url=URL.createObjectURL(blob);
   try{const im=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error("The image could not be read."));i.src=url});
     const m=2400,sc=Math.min(1,m/Math.max(im.naturalWidth,im.naturalHeight));const c=document.createElement("canvas");
-    c.width=Math.round(im.naturalWidth*sc);c.height=Math.round(im.naturalHeight*sc);c.getContext("2d").drawImage(im,0,0,c.width,c.height);
+    c.width=Math.round(im.naturalWidth*sc);const sh=im.naturalHeight*(1-crop);c.height=Math.round(sh*sc);c.getContext("2d").drawImage(im,0,0,im.naturalWidth,sh,0,0,c.width,c.height);
     return {data:c.toDataURL("image/jpeg",0.92),w:im.naturalWidth}}
   finally{URL.revokeObjectURL(url)}
 }
 async function fetchImage(prompt,seed){
-  const s=state.settings,[w,h]=imgSize();let res;
+  const s=state.settings,[w,h0]=imgSize();let res,crop=0,h=h0;
   if(s.imgProvider==="pollinations"){
+    if(!s.pollKey&&Number(s.cropBottom)>0){crop=Math.min(0.3,Number(s.cropBottom)/100);h=Math.round(h0/(1-crop)/64)*64}
     const go=model=>{const q=new URLSearchParams({seed:String(seed),width:w,height:h,nologo:"true",private:"true"});if(model)q.set("model",model);
       return fetch(`https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?${q}`,s.pollKey?{headers:{Authorization:"Bearer "+s.pollKey}}:undefined)};
     res=await go(s.imgModel);
@@ -331,7 +335,7 @@ async function fetchImage(prompt,seed){
   if(!res.ok){const t=await res.text().catch(()=> "");const e=new Error(`Image service said ${res.status}. ${t.slice(0,120)}`);e.status=res.status;throw e}
   const type=res.headers.get("content-type")||"";const blob=await res.blob();
   if(!type.startsWith("image/")&&!blob.type.startsWith("image/"))throw new Error("The image service did not return a picture.");
-  return blobToJpeg(blob);
+  return blobToJpeg(blob,crop);
 }
 async function fetchImageRetry(prompt,seed){
   let last;for(let a=1;a<=4;a++){
@@ -343,19 +347,19 @@ async function fetchImageRetry(prompt,seed){
 const imgCache=new Map();
 function loadImg(src){if(!src)return Promise.resolve(null);if(imgCache.has(src))return imgCache.get(src);
   const p=new Promise(res=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>res(null);i.src=src});imgCache.set(src,p);return p}
-async function genOne(target,isCover){
+async function genOne(target,isCover,which){
   const b=state.book;const names=isCover?b.characters.slice(0,2).map(c=>c.name):target.characters;
   if(!target.scene.trim())throw new Error(isCover?"Add a cover scene on the Story tab.":"This page has no scene description.");
-  const out=await fetchImageRetry(imgPrompt(target.scene,names),b.seed+(target.seedOff||0));
+  const out=await fetchImageRetry(imgPrompt(target.scene,names,isCover?"":shotFor(which)),b.seed+(isCover?0:(which+1)*977)+(target.seedOff||0)*31);
   if(target.img)imgCache.delete(target.img);target.img=out.data;target.imgW=out.w;
 }
 async function generateAll(onlyMissing=true){
   if(state.busy||!state.book)return;state.busy=true;state.abort=false;
-  const b=state.book;const jobs=[{t:b.cover,c:true,l:"cover"},...b.pages.map((p,i)=>({t:p,c:false,l:"page "+(i+1)}))].filter(j=>!onlyMissing||!j.t.img);
+  const b=state.book;const jobs=[{t:b.cover,c:true,w:"cover",l:"cover"},...b.pages.map((p,i)=>({t:p,c:false,w:i,l:"page "+(i+1)}))].filter(j=>!onlyMissing||!j.t.img);
   let done=0,fail=0;
   try{for(const j of jobs){
       if(state.abort)break;setStatus(`Drawing ${j.l} (${done+1} of ${jobs.length})…`,{progress:done/jobs.length,stop:true});
-      try{await genOne(j.t,j.c);refreshCard(j.c?"cover":b.pages.indexOf(j.t))}catch(e){fail++;if(e.message==="Stopped.")break;if(/key|token|switched off|template/i.test(e.message)){throw e}}
+      try{await genOne(j.t,j.c,j.w);refreshCard(j.w)}catch(e){fail++;if(e.message==="Stopped.")break;if(/key|token|switched off|template/i.test(e.message)){throw e}}
       done++;autosave();if(done<jobs.length)await sleep(Number(state.settings.delay)||0)}
     setStatus(state.abort?"Stopped. Your pictures so far are kept.":fail?`Finished with ${fail} picture(s) missing. Press Draw missing to retry.`:"All pictures are ready.",{err:fail>0&&!state.abort})}
   catch(e){setStatus(e.message,{err:true})}
@@ -364,7 +368,7 @@ async function generateAll(onlyMissing=true){
 async function regen(which){
   if(state.busy)return;state.busy=true;state.abort=false;const b=state.book;const isC=which==="cover";const t=isC?b.cover:b.pages[which];
   setStatus("Drawing again…",{stop:true});
-  try{t.seedOff=(t.seedOff||0)+1;await genOne(t,isC);refreshCard(which);setStatus("Done.");autosave()}catch(e){setStatus(e.message,{err:true})}finally{state.busy=false}
+  try{t.seedOff=(t.seedOff||0)+1;await genOne(t,isC,which);refreshCard(which);setStatus("Done.");autosave()}catch(e){setStatus(e.message,{err:true})}finally{state.busy=false}
 }
 async function trySeeds(){
   if(state.busy||!state.book)return;const b=state.book;if(!b.characters.length)return setStatus("Add a main character on the Story tab first.",{err:true});
@@ -372,7 +376,7 @@ async function trySeeds(){
   try{for(let i=0;i<4;i++){if(state.abort)break;const seed=rnd();setStatus(`Trying look ${i+1} of 4…`,{progress:i/4,stop:true});
       const out=await fetchImageRetry(`${b.style}. Character reference sheet, one character, front view, full body, plain light background. ${c.name}: ${c.visual}. No text, no letters, no watermark.`,seed);
       trials.push({seed,img:out.data});render();if(i<3)await sleep(Number(state.settings.delay)||0)}
-    setStatus("Pick the look you like best. It locks the seed for every page.")}
+    setStatus("Pick the look you like best. Edit the description on the Story tab to steer it.")}
   catch(e){setStatus(e.message,{err:true})}finally{state.busy=false}
 }
 
@@ -522,6 +526,7 @@ function runChecks(){
   add(hits.length?"bad":"ok",hits.length?`Possible trademark or copyrighted terms found: ${hits.join(", ")}. Remove or change them.`:"No well-known brand or character names found. (This list is short. You still need to check your own work.)");
   const unnamed=b.characters.filter(c=>!c.visual.trim());add(unnamed.length?"warn":"ok",unnamed.length?"Some characters have no fixed visual description, so they will not look the same on every page.":"Every character has a fixed visual description.");
   const small=plan.filter(p=>p.kind==="story"&&p.fit===false).length;if(plan.some(p=>p.pt))add(small?"warn":"ok",small?`${small} page(s) have very small text. Shorten the text on those pages.`:"All page text fits at a readable size.");
+  add("warn","Look at every picture before you publish. Remove any logo, watermark or signature. The free Pollinations service adds its logo, and cropping the bottom edge may not remove all of it.");
   add("warn","When you publish, KDP asks whether you used AI. Answer yes for the text and the images.");
   add("warn","Use the KDP cover calculator or template to confirm the spine width, then check the PDF in KDP's online previewer before you publish.");
   return out;
@@ -569,6 +574,7 @@ function viewStory(){
       ${b.pages.map((p,i)=>`<div class="pg"><div class="n">${i+1}</div><div class="fields">
         <div class="field"><span>Text</span><textarea data-b="pages.${i}.text" rows="3">${esc(p.text)}</textarea></div>
         <div class="field"><span>Picture scene</span><textarea data-b="pages.${i}.scene" rows="3">${esc(p.scene)}</textarea></div>
+        <div class="field"><span>Camera and pose (blank = automatic variety)</span><input data-b="pages.${i}.shot" value="${esc(p.shot||"")}"></div>
         <div class="field"><span>Characters in the picture (comma separated)</span><input data-chars="${i}" value="${esc(p.characters.join(", "))}">
           <div class="row"><button class="btn small" data-act="up" data-i="${i}" ${i?"":"disabled"}>Move up</button><button class="btn small" data-act="down" data-i="${i}" ${i<b.pages.length-1?"":"disabled"}>Move down</button><button class="btn small" data-act="delpage" data-i="${i}">Delete</button></div></div></div></div>`).join("")}
       <div class="row"><button class="btn small" data-act="addpage">Add page</button><button class="btn primary" data-tab="pics">Continue to pictures</button></div></section>`;
@@ -584,11 +590,11 @@ function viewPics(){
   const b=state.book;if(!b)return `<section class="panel empty">No story yet. Start on the Idea tab.</section>`;
   const done=b.pages.filter(p=>p.img).length;
   return `<section class="panel"><h2>Keep the characters looking the same</h2>
-      <p class="note">Every picture uses the same seed, the same art style and the same fixed character descriptions. First, pick the best-looking version of your main character. That choice sets the seed for the whole book.</p>
-      <div class="row"><button class="btn" data-act="seeds">Try 4 looks for ${esc(b.characters[0]?.name||"the main character")}</button><span class="note">Current seed: ${b.seed}</span></div>
+      <p class="note">Characters stay recognisable through their fixed written look and one art style. Each page uses a different seed and camera angle so the pictures do not repeat the same pose. Preview your main character below. If you do not like the look, edit their description on the Story tab.</p>
+      <div class="row"><button class="btn" data-act="seeds">Preview ${esc(b.characters[0]?.name||"the main character")} (4 tries)</button><span class="note">Current seed: ${b.seed}</span></div>
       ${state.seedTrials?`<div class="seeds">${state.seedTrials.map(s=>`<button data-act="useseed" data-s="${s.seed}" aria-pressed="${b.seed===s.seed}"><img alt="Character look, seed ${s.seed}" src="${s.img}"></button>`).join("")}</div>`:""}</section>
     <section class="panel"><div class="row"><h2>Illustrations</h2><span class="note">${done} of ${b.pages.length} pages drawn</span></div>
-      <div class="row"><button class="btn primary" data-act="drawall">Draw missing pictures</button><button class="btn" data-act="copyall">Copy all prompts</button></div>
+      <div class="row"><button class="btn primary" data-act="drawall">Draw missing pictures</button><button class="btn" data-act="redrawall">Redraw all pictures</button><button class="btn" data-act="copyall">Copy all prompts</button></div>
       <p class="note">Free image services are slow. Expect 10 to 40 seconds each. You can leave this tab open and come back. Use Redraw to try a new version of any page, or Upload to use a picture from another free tool.</p>
       <div class="cards">${cardHTML("cover")}${b.pages.map((_,i)=>cardHTML(i)).join("")}</div></section>`;
 }
@@ -629,7 +635,7 @@ function viewSettings(){
       ${fld("Image model (leave empty for the default)",inp("imgModel"))}${fld("Pollinations key (optional)",inp("pollKey","password"))}
       ${fld("Hugging Face token",inp("hfToken","password"))}${fld("Hugging Face model",inp("hfModel"))}
       ${fld("Custom URL, with {prompt} {seed} {w} {h}",inp("customTpl"))}
-      ${fld("Picture size, long side (px)",inp("imgPx","number"))}${fld("Pause between pictures (ms)",inp("delay","number"))}</div><p class="note">The free Pollinations service allows one picture about every 45 seconds, so a 20-page book takes around 15 to 20 minutes. If you use another image service, you can lower the pause.</p></section>`;
+      ${fld("Crop bottom edge to remove the free service logo (%)",inp("cropBottom","number"))}${fld("Picture size, long side (px)",inp("imgPx","number"))}${fld("Pause between pictures (ms)",inp("delay","number"))}</div><p class="note">The free Pollinations service allows one picture about every 45 seconds, so a 20-page book takes around 15 to 20 minutes. If you use another image service, you can lower the pause.</p></section>`;
 }
 
 /* ============ render & events ============ */
@@ -668,17 +674,18 @@ document.addEventListener("click",async e=>{
       try{await createStory();state.seedTrials=null;state.tab="story";autosave();render();setStatus("Story ready. Edit anything you like.")}catch(err){setStatus(err.message,{err:true})}finally{state.busy=false}break;
     case"addchar":b.characters.push({name:"",role:"",visual:""});render();break;
     case"delchar":b.characters.splice(i,1);render();break;
-    case"addpage":b.pages.push({id:uid(),text:"",scene:"",characters:[],img:null,imgW:0,seedOff:0});render();break;
+    case"addpage":b.pages.push({id:uid(),text:"",scene:"",shot:"",characters:[],img:null,imgW:0,seedOff:0});render();break;
     case"delpage":b.pages.splice(i,1);render();autosave();break;
     case"up":[b.pages[i-1],b.pages[i]]=[b.pages[i],b.pages[i-1]];render();autosave();break;
     case"down":[b.pages[i+1],b.pages[i]]=[b.pages[i],b.pages[i+1]];render();autosave();break;
     case"drawall":generateAll(true);break;
+    case"redrawall":if(el.dataset.sure){generateAll(false);el.textContent="Redraw all pictures";delete el.dataset.sure}else{el.dataset.sure=1;el.textContent="Tap again to redraw every page";setTimeout(()=>{delete el.dataset.sure;el.textContent="Redraw all pictures"},3500)}break;
     case"regen":regen(w);break;
     case"seeds":trySeeds();break;
     case"useseed":b.seed=+el.dataset.s;render();autosave();setStatus("Seed locked. Redraw any page to use it.");break;
     case"upload":upTarget=w;$("#upfile").value="";$("#upfile").click();break;
-    case"copyprompt":{const t=w==="cover"?b.cover:b.pages[w];await copy(imgPrompt(t.scene,w==="cover"?b.characters.slice(0,2).map(c=>c.name):t.characters));break}
-    case"copyall":await copy(["COVER: "+imgPrompt(b.cover.scene,b.characters.slice(0,2).map(c=>c.name)),...b.pages.map((p,k)=>`PAGE ${k+1}: ${imgPrompt(p.scene,p.characters)}`)].join("\n\n"));break;
+    case"copyprompt":{const t=w==="cover"?b.cover:b.pages[w];await copy(imgPrompt(t.scene,w==="cover"?b.characters.slice(0,2).map(c=>c.name):t.characters,shotFor(w)));break}
+    case"copyall":await copy(["COVER: "+imgPrompt(b.cover.scene,b.characters.slice(0,2).map(c=>c.name)),...b.pages.map((p,k)=>`PAGE ${k+1}: ${imgPrompt(p.scene,p.characters,shotFor(k))}`)].join("\n\n"));break;
     case"copylisting":await copy($(".copybox").textContent);break;
     case"preview":previewPages();break;
     case"expint":exportInterior();break;

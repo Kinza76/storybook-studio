@@ -181,7 +181,15 @@ function setStatus(msg,o={}){const s=$("#status");$("#smsg").textContent=msg;s.c
 $("#stopbtn").onclick=()=>{state.abort=true;setStatus("Stopping after the current step…",{stop:true})};
 
 /* ============ text generation ============ */
-function parseJSON(t){t=String(t).trim().replace(/^```(?:json)?/i,"").replace(/```$/,"").trim();const a=t.indexOf("{"),b=t.lastIndexOf("}");if(a<0||b<0)throw new Error("The model did not return JSON. Try again.");return JSON.parse(t.slice(a,b+1))}
+function parseJSON(t){
+  t=String(t).trim().replace(/^```(?:json)?/i,"").replace(/```$/,"").trim();
+  const a=t.indexOf("{");if(a<0)throw new Error("The AI did not return a JSON story. Try again with fewer pages.");
+  let depth=0,inStr=false,escp=false,end=-1;
+  for(let i=a;i<t.length;i++){const c=t[i];if(inStr){if(escp)escp=false;else if(c==="\\")escp=true;else if(c==='"')inStr=false;continue}
+    if(c==='"'){inStr=true;continue}if(c==="{")depth++;else if(c==="}"&&--depth===0){end=i+1;break}}
+  if(end<0)throw new Error("The AI response was incomplete. Try again; your existing project is unchanged.");
+  let raw=t.slice(a,end);try{return JSON.parse(raw)}catch(e){raw=raw.replace(/,\s*([}\]])/g,"$1");try{return JSON.parse(raw)}catch(e2){throw new Error("The AI returned invalid story data. Try a shorter story or use Gemini in Settings.")}}
+}
 async function httpJSON(url,opt){const r=await fetch(url,opt);const t=await r.text();if(!r.ok)throw new Error(`HTTP ${r.status}: ${t.slice(0,200)}`);try{return JSON.parse(t)}catch(e){throw new Error("Unexpected reply: "+t.slice(0,160))}}
 async function llm(sys,user){
   const s=state.settings;
@@ -222,20 +230,31 @@ Setting or subject: ${f.setting||"your choice"}.
 Author's idea: ${f.idea||"none, invent something fresh"}.
 Characters the author wants (keep names if given): ${f.chars||"your choice"}.`}
 async function createStory(){
-  const f=state.form;let user,own=null;
+  const f=state.form;let own=null;
   if(f.mode==="own"){
     own=f.own.split(/\n\s*\n/).map(s=>s.trim()).filter(Boolean);
     if(!own.length)throw new Error("Write your story first. Separate pages with a blank line.");
-    if(state.settings.textProvider==="none"){
-      state.book=newBook({title:"Untitled",pages:own.map(t=>({text:t,scene:"",characters:[]}))});return}
-    user=`The author wrote this story. Do NOT change any page text. Return the same schema, with "pages" in the same order and count (${own.length}), copying each "text" exactly and adding "scene" and "characters". Also create characters, cover_scene, blurb, keywords and a title if missing.\n${formBrief()}\nPAGES:\n${JSON.stringify(own)}`;
-  }else{
-    user=`Write a picture book of exactly ${f.pages} story pages.\n${formBrief()}`;
+    if(state.settings.textProvider==="none"){state.book=newBook({title:"Untitled",pages:own.map(t=>({text:t,scene:"",characters:[]}))});return}
   }
-  const j=parseJSON(await llm(STORY_SYS,user));
-  if(!Array.isArray(j.pages)||!j.pages.length)throw new Error("The story came back without pages. Try again.");
-  if(own)j.pages.forEach((p,i)=>{if(own[i])p.text=own[i]});
-  state.book=newBook(j);
+  const total=own?own.length:Math.max(8,Math.min(120,Number(f.pages)||20));
+  const batchSize=8;let bookData=null;const allPages=[];
+  for(let start=0;start<total;start+=batchSize){
+    if(state.abort)throw new Error("Stopped. No partial story was saved.");
+    const count=Math.min(batchSize,total-start);let sys=STORY_SYS,user;
+    if(start===0){
+      user=own
+        ? `Create metadata and illustration directions for exactly these ${count} supplied pages. Copy every page text exactly. Return the full schema.\n${formBrief()}\nPAGES:\n${JSON.stringify(own.slice(start,start+count))}`
+        : `Create metadata and exactly ${count} opening pages of a larger ${total}-page picture book. Keep the plot open; do not conclude yet.\n${formBrief()}`;
+    }else{
+      sys=`Continue an original children's picture book. Return ONLY valid JSON: {"pages":[{"text":"","scene":"","characters":["name"]}]}. No markdown. Keep character names and visual continuity consistent. Exactly ${count} pages. Do not conclude until the final batch.`;
+      user=`Book: ${bookData.title||"Untitled"}. Premise: ${bookData.blurb||f.idea||f.genre}. Characters and fixed looks: ${JSON.stringify(bookData.characters||[])}. Previous pages: ${allPages.slice(-4).map(p=>p.text).join(" ")}. Write the next ${count} pages. Language: ${f.lang}. Age: ${f.age}. Words per page: ${AGES.find(x=>x.id===f.age).words}.`;
+    }
+    setStatus(`Writing pages ${start+1}–${start+count} of ${total}…`,{progress:start/total,stop:true});
+    const j=parseJSON(await llm(sys,user));
+    if(!Array.isArray(j.pages)||j.pages.length!==count)throw new Error(`The AI returned an incomplete batch for pages ${start+1}–${start+count}. Try a smaller batch or switch story provider.`);
+    if(start===0)bookData=j;if(own)j.pages.forEach((p,i)=>{p.text=own[start+i]});allPages.push(...j.pages);
+  }
+  bookData.pages=allPages;state.book=newBook(bookData);
 }
 function newBook(j){
   const art=ARTS.find(a=>a.id===state.form.art)||ARTS[0];
@@ -489,7 +508,7 @@ function viewIdea(){
       ${fld("Topic or lesson",`<select data-f="topic"><option value="">None, just a fun story</option>${Object.entries(TOPICS).map(([g,l])=>`<optgroup label="${esc(g)}">${opt(l,f.topic)}</optgroup>`).join("")}</select>`)}
       ${fld("Setting or subject",`<input data-f="setting" list="niches" value="${esc(f.setting)}" placeholder="Pick one or type your own"><datalist id="niches">${NICHES.map(n=>`<option value="${esc(n)}">`).join("")}</datalist>`)}
       ${fld("Art style",`<select data-f="art">${opt(ARTS,f.art)}</select>`)}
-      ${own?"":fld("Story pages",`<input type="number" data-f="pages" min="8" max="40" value="${f.pages}">`)}
+      ${own?"":fld("Story pages",`<input type="number" data-f="pages" min="8" max="120" value="${f.pages}">`)}
       ${fld("Language",`<input data-f="lang" value="${esc(f.lang)}">`)}
       ${fld("Trim size",`<select data-f="trim">${opt(Object.keys(TRIMS),f.trim)}</select>`)}
     </div>

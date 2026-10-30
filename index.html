@@ -207,6 +207,7 @@ async function llm(sys,user){
         if(/output_token_limit|token limit/i.test(e.message)&&maxTok<32000){maxTok*=2;setStatus("The model ran out of room while thinking. Trying again with more room…",{stop:true});continue}
         if(model&&(e.status===404||e.status===400)){model="";continue}
         if((e.status===402||e.status===429)&&a<=3){setStatus(`Pollinations asks for a short pause (free limit). Trying again in 35 seconds (${a} of 3)…`,{stop:true});await sleep(35000);if(state.abort)throw new Error("Stopped.");continue}
+        if(/output_token_limit|token limit/i.test(e.message))throw new Error("The free Pollinations model keeps running out of room. Switch the story writer to Gemini or Groq in Settings (both have free keys).");
         throw e}}
     return j.choices?.[0]?.message?.content||"";
   }
@@ -240,10 +241,36 @@ async function createStory(){
   }else{
     user=`Write a picture book of exactly ${f.pages} story pages.\n${formBrief()}`;
   }
+  if(state.settings.textProvider==="pollinations"){state.book=await createStorySteps(own);return}
   const j=parseJSON(await llm(STORY_SYS,user));
   if(!Array.isArray(j.pages)||!j.pages.length)throw new Error("The story came back without pages. Try again.");
   if(own)j.pages.forEach((p,i)=>{if(own[i])p.text=own[i]});
   state.book=newBook(j);
+}
+const RULES=STORY_SYS.split("Schema:")[0];
+const PLAN_SYS=RULES+`Schema: {"title":"","subtitle":"","blurb":"60-90 words","keywords":["7 short phrases"],"characters":[{"name":"","role":"","visual":""}],"cover_scene":"","beats":["one short sentence per page"]}. Keep every value short.`;
+const PAGES_SYS=RULES+`Schema: {"pages":[{"text":"","scene":"under 40 words","characters":["name"]}]}. Return only the pages asked for.`;
+/* Small requests, so even a model that "thinks" first never runs out of room. */
+async function createStorySteps(own){
+  const f=state.form,N=own?own.length:(Number(f.pages)||20),gap=state.settings.stepGap??31000;state.abort=false;
+  const total=1+Math.ceil(N/4);
+  setStatus(`Planning the story (1 of ${total})…`,{progress:0,stop:true});
+  const plan=parseJSON(await llm(PLAN_SYS,own
+    ?`The author wrote this story. Do not change it. Create a title if missing, blurb, keywords, characters and cover_scene. Leave beats empty.\n${formBrief()}\nPAGES:\n${JSON.stringify(own)}`
+    :`Plan a picture book of exactly ${N} pages. "beats" must have exactly ${N} items.\n${formBrief()}`));
+  const pages=[];const chars=JSON.stringify(plan.characters||[]);
+  for(let st=0;st<N;st+=4){
+    if(state.abort)throw new Error("Stopped. Nothing was lost; press Write the story to start again.");
+    await sleep(gap);
+    const n=Math.min(4,N-st);setStatus(`Writing pages ${st+1} to ${st+n} (${2+st/4} of ${total})…`,{progress:(1+st/4)/total,stop:true});
+    const user=own
+      ?`Characters: ${chars}\nFor each page below return {"text": copied exactly, "scene", "characters"}.\nPAGES ${st+1} to ${st+n}:\n${JSON.stringify(own.slice(st,st+n))}`
+      :`${formBrief()}\nCharacters (use these exact names): ${chars}\nTitle: ${plan.title}\nAll beats: ${JSON.stringify(plan.beats||[])}\nLast page written so far: ${pages.length?pages[pages.length-1].text:"(none, this is the start)"}\nWrite pages ${st+1} to ${st+n} now, following those beats. Return exactly ${n} pages.`;
+    const j=parseJSON(await llm(PAGES_SYS,user));
+    if(!Array.isArray(j.pages)||!j.pages.length)throw new Error("A batch of pages came back empty. Press Write the story to try again.");
+    j.pages.slice(0,n).forEach((p,i)=>{if(own)p.text=own[st+i];pages.push(p)});
+  }
+  return newBook({...plan,pages});
 }
 function newBook(j){
   const art=ARTS.find(a=>a.id===state.form.art)||ARTS[0];

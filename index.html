@@ -160,7 +160,7 @@ const RISKY=["mickey","minnie","disney","pixar","pokemon","pikachu","mario","lui
 
 /* ============ state & storage ============ */
 const defaultSettings={textProvider:"pollinations",geminiKey:"",geminiModel:"gemini-2.5-flash",oaBase:"https://api.groq.com/openai/v1",oaKey:"",oaModel:"llama-3.3-70b-versatile",
-  pollTextModel:"openai",imgProvider:"pollinations",imgModel:"flux",pollKey:"",hfToken:"",hfModel:"black-forest-labs/FLUX.1-schnell",customTpl:"",imgPx:1280,delay:3000};
+  pollTextModel:"openai/gpt-4o-mini",imgProvider:"pollinations",imgModel:"flux",pollKey:"",hfToken:"",hfModel:"black-forest-labs/FLUX.1-schnell",customTpl:"",imgPx:1280,delay:3000};
 const defaultForm={mode:"ai",age:"preschool",genre:"Bedtime story",approach:"Read-aloud",topic:"",setting:"",idea:"",art:"watercolor",pages:20,lang:"English (UK)",chars:"",own:"",
   author:"",trim:"8.5x8.5",paper:"std",layout:"top",pageColor:"#FFFDF7",font:"Fredoka",aiDisclosure:true};
 const state={tab:"idea",settings:{...defaultSettings},form:{...defaultForm},book:null,busy:false,abort:false,showSettings:false,seedTrials:null,thumbs:false};
@@ -207,7 +207,7 @@ async function llm(sys,user){
   }
   if(s.textProvider==="pollinations"){
     const h={"Content-Type":"application/json"};if(s.pollKey)h.Authorization="Bearer "+s.pollKey;
-    const j=await httpJSON("https://text.pollinations.ai/openai",{method:"POST",headers:h,body:JSON.stringify({model:s.pollTextModel||"openai",seed:rnd(),private:true,messages:[{role:"system",content:sys},{role:"user",content:user}]})});
+    const j=await httpJSON("https://text.pollinations.ai/openai",{method:"POST",headers:h,body:JSON.stringify({model:s.pollTextModel||"openai/gpt-4o-mini",max_completion_tokens:8192,temperature:0.7,seed:rnd(),private:true,messages:[{role:"system",content:sys},{role:"user",content:user}]})});
     return j.choices?.[0]?.message?.content||"";
   }
   throw new Error("Story writing is switched off in Settings. Choose a provider, or fill in the story by hand on the Story tab.");

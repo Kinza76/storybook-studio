@@ -159,12 +159,12 @@ const FONTS=["Fredoka","Andika","Baloo 2","Patrick Hand","Comic Neue","Atkinson 
 const RISKY=["mickey","minnie","disney","pixar","pokemon","pikachu","mario","luigi","nintendo","sonic","lego","barbie","peppa","bluey","paw patrol","cocomelon","elsa","frozen","spiderman","spider-man","batman","superman","marvel","harry potter","hogwarts","winnie the pooh","pooh","hello kitty","sesame street","elmo","dr. seuss","seuss","cat in the hat","gruffalo","hungry caterpillar","minecraft","roblox","fortnite","star wars","yoda","shrek","nemo","simba","bambi","dora","thomas the tank","paddington","peter rabbit","ghibli","totoro","pixar style","disney style","in the style of","bestseller","number one"];
 
 /* ============ state & storage ============ */
-const defaultSettings={textProvider:"pollinations",geminiKey:"",geminiModel:"gemini-2.5-flash",oaBase:"https://api.groq.com/openai/v1",oaKey:"",oaModel:"llama-3.3-70b-versatile",
-  pollTextModel:"",imgProvider:"pollinations",imgModel:"",pollKey:"",hfToken:"",hfModel:"black-forest-labs/FLUX.1-schnell",customTpl:"",imgPx:1280,delay:46000,v:2};
+const defaultSettings={textProvider:"pollinations",geminiKey:"",geminiModel:"gemini-2.5-flash",oaBase:"https://api.groq.com/openai/v1",oaKey:"",oaModel:"openai/gpt-oss-120b",
+  pollTextModel:"",imgProvider:"pollinations",imgModel:"",pollKey:"",hfToken:"",hfModel:"black-forest-labs/FLUX.1-schnell",customTpl:"",imgPx:1280,delay:46000,v:3};
 const defaultForm={mode:"ai",age:"preschool",genre:"Bedtime story",approach:"Read-aloud",topic:"",setting:"",idea:"",art:"watercolor",pages:20,lang:"English (UK)",chars:"",own:"",
   author:"",trim:"8.5x8.5",paper:"std",layout:"top",pageColor:"#FFFDF7",font:"Fredoka",aiDisclosure:true};
 const state={tab:"idea",settings:{...defaultSettings},form:{...defaultForm},book:null,busy:false,abort:false,showSettings:false,seedTrials:null,thumbs:false};
-try{const sv=JSON.parse(localStorage.getItem("sbs_settings")||"{}");if(sv.v!==2){delete sv.pollTextModel;delete sv.imgModel;delete sv.delay}Object.assign(state.settings,sv,{v:2})}catch(e){}
+try{const sv=JSON.parse(localStorage.getItem("sbs_settings")||"{}");if((sv.v||0)<2){delete sv.pollTextModel;delete sv.imgModel;delete sv.delay}if(sv.oaModel==="llama-3.3-70b-versatile")delete sv.oaModel;Object.assign(state.settings,sv,{v:3})}catch(e){}
 function saveSettings(){try{localStorage.setItem("sbs_settings",JSON.stringify(state.settings))}catch(e){}}
 
 let db=null;
@@ -181,6 +181,10 @@ function setStatus(msg,o={}){const s=$("#status");$("#smsg").textContent=msg;s.c
 $("#stopbtn").onclick=()=>{state.abort=true;setStatus("Stopping after the current step…",{stop:true})};
 
 /* ============ text generation ============ */
+async function listOaModels(base,key){const r=await httpJSON(base.replace(/\/$/,"")+"/models",{headers:{Authorization:"Bearer "+key}});
+  return (r.data||[]).map(m=>m.id).filter(id=>id&&!/whisper|tts|orpheus|guard|embed|moderation|audio|image|vision/i.test(id))}
+async function pickOaModel(base,key){let ids;try{ids=await listOaModels(base,key)}catch(e){return null}
+  for(const p of [/gpt-oss-120b/,/gpt-oss-20b/,/llama-3\.3-70b/,/llama-3\.1-8b/,/qwen/,/llama/]){const m=ids.find(i=>p.test(i));if(m)return m}return ids[0]||null}
 function parseJSON(t){t=String(t).trim().replace(/^```(?:json)?/i,"").replace(/```$/,"").trim();const a=t.indexOf("{"),b=t.lastIndexOf("}");if(a<0||b<0)throw new Error("The model did not return JSON. Try again.");return JSON.parse(t.slice(a,b+1))}
 async function httpJSON(url,opt){const r=await fetch(url,opt);const t=await r.text();if(!r.ok){const e=new Error(`HTTP ${r.status}: ${t.slice(0,300)}`);e.status=r.status;throw e}try{return JSON.parse(t)}catch(e){throw new Error("Unexpected reply: "+t.slice(0,160))}}
 async function llm(sys,user){
@@ -192,9 +196,20 @@ async function llm(sys,user){
     return (j.candidates?.[0]?.content?.parts||[]).map(p=>p.text).join("");
   }
   if(s.textProvider==="openai"){
-    if(!s.oaKey)throw new Error("Add the API key for your OpenAI-compatible service in Settings.");
-    const j=await httpJSON(s.oaBase.replace(/\/$/,"")+"/chat/completions",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+s.oaKey},
-      body:JSON.stringify({model:s.oaModel,temperature:0.9,max_tokens:8000,messages:[{role:"system",content:sys},{role:"user",content:user}]})});
+    if(!s.oaKey)throw new Error("Add the API key for your OpenAI-compatible service in the Compatible key box in Settings.");
+    const base=s.oaBase.replace(/\/$/,"");
+    const call=model=>httpJSON(base+"/chat/completions",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+s.oaKey},
+      body:JSON.stringify({model,temperature:0.9,max_tokens:8000,...(/gpt-oss/i.test(model)?{reasoning_effort:"low"}:{}),messages:[{role:"system",content:sys},{role:"user",content:user}]})});
+    let j,model=s.oaModel;
+    for(let a=1;;a++){
+      try{j=await call(model);break}
+      catch(e){
+        if((e.status===404||/model_not_found|does not exist/i.test(e.message))&&a<=2){
+          const m=await pickOaModel(base,s.oaKey);
+          if(!m||m===model)throw new Error("Your account cannot use the model "+model+", and no other chat model was found. Check the key and base URL in Settings. ("+e.message.slice(0,120)+")");
+          model=m;s.oaModel=m;saveSettings();setStatus(`That model is not available to you. Switched to ${m} and trying again…`,{stop:true});continue}
+        if(e.status===429&&a<=3){setStatus(`The service asks for a short pause (rate limit). Trying again in 20 seconds (${a} of 3)…`,{stop:true});await sleep(20000);continue}
+        throw e}}
     return j.choices?.[0]?.message?.content||"";
   }
   if(s.textProvider==="pollinations"){
@@ -241,7 +256,7 @@ async function createStory(){
   }else{
     user=`Write a picture book of exactly ${f.pages} story pages.\n${formBrief()}`;
   }
-  if(state.settings.textProvider==="pollinations"){state.book=await createStorySteps(own);return}
+  if(["pollinations","openai"].includes(state.settings.textProvider)){state.book=await createStorySteps(own);return}
   const j=parseJSON(await llm(STORY_SYS,user));
   if(!Array.isArray(j.pages)||!j.pages.length)throw new Error("The story came back without pages. Try again.");
   if(own)j.pages.forEach((p,i)=>{if(own[i])p.text=own[i]});
@@ -252,7 +267,7 @@ const PLAN_SYS=RULES+`Schema: {"title":"","subtitle":"","blurb":"60-90 words","k
 const PAGES_SYS=RULES+`Schema: {"pages":[{"text":"","scene":"under 40 words","characters":["name"]}]}. Return only the pages asked for.`;
 /* Small requests, so even a model that "thinks" first never runs out of room. */
 async function createStorySteps(own){
-  const f=state.form,N=own?own.length:(Number(f.pages)||20),gap=state.settings.stepGap??31000;state.abort=false;
+  const f=state.form,N=own?own.length:(Number(f.pages)||20),gap=state.settings.stepGap??(state.settings.textProvider==="pollinations"?31000:0);state.abort=false;
   const total=1+Math.ceil(N/4);
   setStatus(`Planning the story (1 of ${total})…`,{progress:0,stop:true});
   const plan=parseJSON(await llm(PLAN_SYS,own
@@ -607,7 +622,8 @@ function viewSettings(){
       ${fld("Pollinations text model (leave empty for the default)",`<input data-s="pollTextModel" list="pmodels" value="${esc(s.pollTextModel)}" autocomplete="off" placeholder="empty = default"><datalist id="pmodels">${(state.pollModels||[]).map(m=>`<option value="${esc(m)}">`).join("")}</datalist>`)}
       <div class="field"><span>&nbsp;</span><button class="btn small" data-act="listmodels">Show available free models</button></div>
       ${fld("Gemini key",inp("geminiKey","password"))}${fld("Gemini model",inp("geminiModel"))}
-      ${fld("Compatible base URL",inp("oaBase"))}${fld("Compatible key",inp("oaKey","password"))}${fld("Compatible model",inp("oaModel"))}</div>
+      ${fld("Compatible base URL",inp("oaBase"))}${fld("Compatible key",inp("oaKey","password"))}${fld("Compatible model",`<input data-s="oaModel" list="oamodels" value="${esc(s.oaModel)}" autocomplete="off"><datalist id="oamodels">${(state.oaModels||[]).map(m=>`<option value="${esc(m)}">`).join("")}</datalist>`)}
+      <div class="field"><span>&nbsp;</span><button class="btn small" data-act="listoa">Show models my key can use</button></div></div>
     <h3>Illustrations</h3><div class="grid">
       ${fld("Provider",sel("imgProvider",[["pollinations","Pollinations (no key)"],["hf","Hugging Face (free token)"],["custom","Custom URL"],["none","Off (I upload pictures)"]]))}
       ${fld("Image model (leave empty for the default)",inp("imgModel"))}${fld("Pollinations key (optional)",inp("pollKey","password"))}
@@ -638,6 +654,8 @@ document.addEventListener("click",async e=>{
   const w=el.dataset.w==="cover"?"cover":el.dataset.w!=null?+el.dataset.w:null;
   switch(a){
     case"settings":state.showSettings=true;render();break;
+    case"listoa":try{if(!state.settings.oaKey)throw new Error("Paste the key in the Compatible key box first.");setStatus("Asking your service which models you can use…");
+      state.oaModels=await listOaModels(state.settings.oaBase,state.settings.oaKey);render();setStatus("Models you can use: "+state.oaModels.join(", ")+".")}catch(err){setStatus(err.message,{err:true})}break;
     case"listmodels":try{setStatus("Asking Pollinations which models are free…");const r=await fetch("https://text.pollinations.ai/models");const j=await r.json();
       state.pollModels=(Array.isArray(j)?j:Object.values(j)).map(m=>typeof m==="string"?m:m.name||m.id).filter(Boolean);render();setStatus("Free models: "+state.pollModels.join(", ")+". Pick one in the model box, or leave it empty.")}
       catch(err){setStatus("Could not load the model list ("+err.message+"). Leave the model box empty to use the default.",{err:true})}break;

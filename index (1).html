@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Storybook Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Andika:wght@400;700&family=Fredoka:wght@400;600&family=Baloo+2:wght@500;700&family=Patrick+Hand&family=Comic+Neue:wght@400;700&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+/* Layout: left rail of four steps on wide screens, top tabs on phones; one working pane; status bar pinned at the bottom. */
+:root{
+  --bg:#EEF2F0; --surface:#FFFFFF; --ink:#1B2A28; --muted:#5A6B68; --line:#D3DDDA;
+  --accent:#1F7A6D; --accent-ink:#FFFFFF; --soft:#DDEDE9;
+  --ok:#1E7B46; --warn:#9A6200; --bad:#B3321F;
+  --display:"Fredoka","Baloo 2","Chalkboard SE","Comic Sans MS",system-ui,sans-serif;
+  --body:"Andika","Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#111918; --surface:#1A2423; --ink:#E5EEEC; --muted:#9BADAA; --line:#2C3B39;
+  --accent:#4FC3B0; --accent-ink:#0B1F1C; --soft:#21322F; --ok:#59C98A; --warn:#E6B04A; --bad:#FF8A78; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#111918; --surface:#1A2423; --ink:#E5EEEC; --muted:#9BADAA; --line:#2C3B39;
+  --accent:#4FC3B0; --accent-ink:#0B1F1C; --soft:#21322F; --ok:#59C98A; --warn:#E6B04A; --bad:#FF8A78; color-scheme:dark;}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.5 var(--body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:16px 88px}
+h1,h2,h3{font-family:var(--display);font-weight:600;margin:0;text-wrap:balance}
+h1{font-size:1.6rem} h2{font-size:1.25rem} h3{font-size:1.05rem}
+.app{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:200px minmax(0,1fr);gap:20px}
+.rail{position:sticky;top:16px;align-self:start;display:flex;flex-direction:column;gap:6px}
+.brand{display:flex;flex-direction:column;gap:2px;margin-bottom:12px}
+.brand small{color:var(--muted)}
+.tab{all:unset;cursor:pointer;display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:10px;color:var(--muted);font-family:var(--display)}
+.tab b{display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--soft);color:var(--ink);font-size:.85rem}
+.tab[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 0 0 1px var(--line)}
+.tab[aria-selected="true"] b{background:var(--accent);color:var(--accent-ink)}
+.tab:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.railfoot{margin-top:12px;display:flex;flex-direction:column;gap:8px}
+main{min-width:0;display:flex;flex-direction:column;gap:16px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:14px;min-width:0}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field>span,.lbl{font-size:.8rem;letter-spacing:.03em;text-transform:uppercase;color:var(--muted)}
+input,select,textarea{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:9px 10px;width:100%;min-width:0}
+textarea{resize:vertical;min-height:72px}
+input[type=checkbox]{width:auto}
+input[type=color]{padding:2px;height:40px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn{font:inherit;font-family:var(--display);cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;padding:9px 14px}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.btn.small{padding:5px 9px;font-size:.85rem}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{all:unset;cursor:pointer;padding:8px 14px;font-family:var(--display)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.note{color:var(--muted);font-size:.9rem}
+.empty{padding:28px;text-align:center;color:var(--muted)}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:14px}
+.card{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface);display:flex;flex-direction:column;min-width:0}
+.card .pic{aspect-ratio:1/1;background:var(--soft);display:grid;place-items:center;color:var(--muted);font-size:.9rem;text-align:center;padding:8px}
+.card .pic img{width:100%;height:100%;object-fit:cover;display:block}
+.card .body{padding:10px;display:flex;flex-direction:column;gap:8px}
+.card .txt{font-size:.88rem;max-height:4.6em;overflow:hidden}
+.pg{border:1px solid var(--line);border-radius:12px;padding:12px;display:grid;grid-template-columns:36px minmax(0,1fr);gap:10px}
+.pg .n{font-family:var(--display);color:var(--muted)}
+.pg .fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.chk{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--line)}
+.chk:first-child{border-top:0}
+.pill{font-size:.75rem;font-family:var(--display);padding:2px 8px;border-radius:99px;border:1px solid currentColor;white-space:nowrap}
+.pill.ok{color:var(--ok)}.pill.warn{color:var(--warn)}.pill.bad{color:var(--bad)}
+.thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.thumbs canvas{width:100%;height:auto;border:1px solid var(--line);border-radius:4px;background:#fff}
+.seeds{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.seeds button{all:unset;cursor:pointer;border:2px solid var(--line);border-radius:10px;overflow:hidden}
+.seeds button[aria-pressed="true"]{border-color:var(--accent)}
+.seeds img{width:100%;display:block}
+#status{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--line);
+  padding:10px max(16px,env(safe-area-inset-left,0px)) calc(10px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-right,0px));
+  display:flex;gap:12px;align-items:center;z-index:5}
+#status .msg{flex:1;min-width:0}
+#status .bar{height:6px;border-radius:4px;background:var(--soft);overflow:hidden;margin-top:6px}
+#status .bar i{display:block;height:100%;background:var(--accent);width:0}
+#status.err .msg{color:var(--bad)}
+.copybox{font-size:.9rem;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;white-space:pre-wrap;overflow-wrap:anywhere}
+details>summary{cursor:pointer;font-family:var(--display)}
+@media (max-width:760px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .rail{position:static;flex-direction:row;flex-wrap:wrap;align-items:center}
+  .brand{width:100%;margin-bottom:4px}
+  .tab{padding:8px 10px}
+  .railfoot{flex-direction:row;margin:0 0 0 auto}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="rail" role="tablist" aria-label="Steps">
+    <div class="brand"><h1>Storybook Studio</h1><small>Picture books for Amazon KDP</small></div>
+    <button class="tab" role="tab" data-tab="idea"><b>1</b>Idea</button>
+    <button class="tab" role="tab" data-tab="story"><b>2</b>Story</button>
+    <button class="tab" role="tab" data-tab="pics"><b>3</b>Pictures</button>
+    <button class="tab" role="tab" data-tab="export"><b>4</b>Export</button>
+    <div class="railfoot">
+      <button class="btn small" data-act="settings">Settings</button>
+      <button class="btn small" data-act="newbook">New book</button>
+    </div>
+  </nav>
+  <main id="view"></main>
+</div>
+<div id="status" role="status" aria-live="polite"><div class="msg"><span id="smsg">Ready.</span><div class="bar" hidden><i></i></div></div><button class="btn small" id="stopbtn" hidden>Stop</button></div>
+<input type="file" id="loadfile" accept="application/json,.json" hidden>
+<input type="file" id="upfile" accept="image/*" hidden>
+
+<script>
+"use strict";
+/* ============ helpers ============ */
+const $=(s,r=document)=>r.querySelector(s);
+const $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const rnd=()=>Math.floor(Math.random()*1e6);
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+const uid=()=>Math.random().toString(36).slice(2,9);
+function getPath(o,p){return p.split(".").reduce((a,k)=>a?.[k],o)}
+function setPath(o,p,v){const ks=p.split(".");const l=ks.pop();const t=ks.reduce((a,k)=>a[k],o);t[l]=v}
+
+/* ============ option lists (from your book-types list) ============ */
+const AGES=[
+  {id:"toddler",label:"Toddlers (1–3)",words:"8–25",pt:26},
+  {id:"preschool",label:"Preschool (3–5)",words:"20–45",pt:22},
+  {id:"early",label:"Early elementary (5–8)",words:"40–80",pt:18},
+  {id:"middle",label:"Middle grade (8–12), short illustrated",words:"60–110",pt:16}];
+const GENRES=["Bedtime story","Adventure story","Original fairy tale","Fable / moral story","Animal story","Fantasy and magic","Gentle mystery","Funny and silly story","Friendship story","Family story","School story","Sibling story","Talking-animal story","Original superhero story","Princess and castle story","Dinosaur story","Space and alien story","Time-travel story","Gentle historical story","Original folklore or myth","Seasonal or holiday story"];
+const APPROACHES=["Read-aloud","Rhyming","Repetitive pattern","Predictable (repeated refrain)","Concept book (teaches one idea)","Early reader (simple decodable words)","Interactive (asks the child questions)"];
+const TOPICS={
+ "Feelings and social skills":["Naming emotions","Emotional regulation","Anger management","Anxiety and worry","Confidence and self-esteem","Growth mindset","Resilience and perseverance","Empathy and kindness","Making friends","Sharing and taking turns","Conflict resolution","Patience","Mindfulness and relaxation","Gratitude","Coping with disappointment","Problem-solving","Handling mistakes"],
+ "Values and character":["Honesty","Kindness","Respect","Generosity","Responsibility","Courage","Fairness","Teamwork","Forgiveness","Good manners","Keeping promises","Respecting differences","Looking after nature","Digital citizenship"],
+ "Everyday life":["Potty training","Brushing teeth","Getting dressed","Bedtime routine","Healthy eating","Exercise and movement","Helping at home","Road safety","Water safety","Money and saving","First day of school","Doctor or dentist visit","Moving house","Welcoming a new baby","Starting nursery"],
+ "Big changes":["Making new friends","Bullying prevention","Losing a pet","Grief","Parents separating","Hospital visit","Facing fears","Coping with change","Belonging","Family diversity","Adoption and fostering","Disability awareness","Neurodiversity and inclusion"],
+ "Learning":["Alphabet","Counting","Shapes and colours","Opposites","Weather and seasons","Space and planets","Oceans and sea life","Insects and bugs","Plants and gardens","How things work","Simple coding ideas"]};
+const NICHES=["woodland animals","farm animals","ocean animals","birds","cats and dogs","dragons","fairies","mermaids","friendly monsters","magical forest","trains","trucks and diggers","aeroplanes","boats and ships","robots","space","dinosaurs","garden","seaside","winter","autumn","bakery","library","camping trip","treehouse"];
+const ARTS=[
+ {id:"watercolor",label:"Soft watercolour",t:"soft watercolor children's book illustration, gentle pastel palette, visible paper texture, warm light, rounded friendly shapes, clean composition"},
+ {id:"pencil",label:"Hand-drawn pencil and ink",t:"hand-drawn children's book illustration, fine ink outlines with colored pencil shading, cozy detail, warm muted colors"},
+ {id:"cartoon",label:"Bright cartoon",t:"bright friendly cartoon children's book illustration, bold clean outlines, flat vivid colors, simple expressive faces"},
+ {id:"cute",label:"Cute animal storybook",t:"cute storybook illustration with big expressive eyes, soft rounded shapes, pastel colors, gentle shading"},
+ {id:"flat",label:"Minimalist flat shapes",t:"minimalist flat vector children's book illustration, simple shapes, limited color palette, generous empty space"},
+ {id:"geometric",label:"Geometric",t:"geometric children's book illustration built from simple shapes, bold colors, clean edges, mid-century picture book feel"},
+ {id:"collage",label:"Paper-cut collage",t:"paper-cut collage children's book illustration, layered cut paper, subtle texture and shadows, bright colors"},
+ {id:"clay",label:"Soft clay 3D",t:"soft handmade clay figurine look, rounded toy-like characters, gentle studio lighting, shallow depth of field, pastel colors"}];
+const TRIMS={"8.5x8.5":[8.5,8.5],"8x8":[8,8],"7.5x7.5":[7.5,7.5],"8x10":[8,10],"8.5x11":[8.5,11],"6x9":[6,9]};
+const PAPERS={"std":{l:"Standard colour, white paper",ppi:0.002252},"prem":{l:"Premium colour, white paper",ppi:0.002347},"bw":{l:"Black and white, white paper",ppi:0.002252},"cream":{l:"Black and white, cream paper",ppi:0.0025}};
+const FONTS=["Fredoka","Andika","Baloo 2","Patrick Hand","Comic Neue","Atkinson Hyperlegible"];
+/* Not a complete list. A warning, not a legal check. */
+const RISKY=["mickey","minnie","disney","pixar","pokemon","pikachu","mario","luigi","nintendo","sonic","lego","barbie","peppa","bluey","paw patrol","cocomelon","elsa","frozen","spiderman","spider-man","batman","superman","marvel","harry potter","hogwarts","winnie the pooh","pooh","hello kitty","sesame street","elmo","dr. seuss","seuss","cat in the hat","gruffalo","hungry caterpillar","minecraft","roblox","fortnite","star wars","yoda","shrek","nemo","simba","bambi","dora","thomas the tank","paddington","peter rabbit","ghibli","totoro","pixar style","disney style","in the style of","bestseller","number one"];
+
+/* ============ state & storage ============ */
+const defaultSettings={textProvider:"pollinations",geminiKey:"",geminiModel:"gemini-2.5-flash",oaBase:"https://api.groq.com/openai/v1",oaKey:"",oaModel:"llama-3.3-70b-versatile",
+  pollTextModel:"openai",imgProvider:"pollinations",imgModel:"flux",pollKey:"",hfToken:"",hfModel:"black-forest-labs/FLUX.1-schnell",customTpl:"",imgPx:1280,delay:3000};
+const defaultForm={mode:"ai",age:"preschool",genre:"Bedtime story",approach:"Read-aloud",topic:"",setting:"",idea:"",art:"watercolor",pages:20,lang:"English (UK)",chars:"",own:"",
+  author:"",trim:"8.5x8.5",paper:"std",layout:"top",pageColor:"#FFFDF7",font:"Fredoka",aiDisclosure:true};
+const state={tab:"idea",settings:{...defaultSettings},form:{...defaultForm},book:null,busy:false,abort:false,showSettings:false,seedTrials:null,thumbs:false};
+try{Object.assign(state.settings,JSON.parse(localStorage.getItem("sbs_settings")||"{}"))}catch(e){}
+function saveSettings(){try{localStorage.setItem("sbs_settings",JSON.stringify(state.settings))}catch(e){}}
+
+let db=null;
+function idb(){return new Promise(res=>{try{const r=indexedDB.open("storybook-studio",1);r.onupgradeneeded=()=>r.result.createObjectStore("kv");r.onsuccess=()=>res(r.result);r.onerror=()=>res(null)}catch(e){res(null)}})}
+async function dbPut(v){try{db=db||await idb();if(!db)return;await new Promise(r=>{const t=db.transaction("kv","readwrite");t.objectStore("kv").put(v,"project");t.oncomplete=r;t.onerror=r})}catch(e){}}
+async function dbGet(){try{db=db||await idb();if(!db)return null;return await new Promise(r=>{const q=db.transaction("kv").objectStore("kv").get("project");q.onsuccess=()=>r(q.result||null);q.onerror=()=>r(null)})}catch(e){return null}}
+let saveT=null;
+function autosave(){clearTimeout(saveT);saveT=setTimeout(()=>dbPut({form:state.form,book:state.book}),700)}
+
+/* ============ status ============ */
+function setStatus(msg,o={}){const s=$("#status");$("#smsg").textContent=msg;s.classList.toggle("err",!!o.err);
+  const bar=$(".bar",s);bar.hidden=o.progress==null;if(o.progress!=null)$("i",bar).style.width=Math.round(o.progress*100)+"%";
+  $("#stopbtn").hidden=!o.stop}
+$("#stopbtn").onclick=()=>{state.abort=true;setStatus("Stopping after the current step…",{stop:true})};
+
+/* ============ text generation ============ */
+function parseJSON(t){t=String(t).trim().replace(/^```(?:json)?/i,"").replace(/```$/,"").trim();const a=t.indexOf("{"),b=t.lastIndexOf("}");if(a<0||b<0)throw new Error("The model did not return JSON. Try again.");return JSON.parse(t.slice(a,b+1))}
+async function httpJSON(url,opt){const r=await fetch(url,opt);const t=await r.text();if(!r.ok)throw new Error(`HTTP ${r.status}: ${t.slice(0,200)}`);try{return JSON.parse(t)}catch(e){throw new Error("Unexpected reply: "+t.slice(0,160))}}
+async function llm(sys,user){
+  const s=state.settings;
+  if(s.textProvider==="gemini"){
+    if(!s.geminiKey)throw new Error("Add your Gemini key in Settings (free from Google AI Studio).");
+    const j=await httpJSON(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(s.geminiModel)}:generateContent`,{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":s.geminiKey},
+      body:JSON.stringify({systemInstruction:{parts:[{text:sys}]},contents:[{role:"user",parts:[{text:user}]}],generationConfig:{responseMimeType:"application/json",temperature:0.9}})});
+    return (j.candidates?.[0]?.content?.parts||[]).map(p=>p.text).join("");
+  }
+  if(s.textProvider==="openai"){
+    if(!s.oaKey)throw new Error("Add the API key for your OpenAI-compatible service in Settings.");
+    const j=await httpJSON(s.oaBase.replace(/\/$/,"")+"/chat/completions",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+s.oaKey},
+      body:JSON.stringify({model:s.oaModel,temperature:0.9,messages:[{role:"system",content:sys},{role:"user",content:user}]})});
+    return j.choices?.[0]?.message?.content||"";
+  }
+  if(s.textProvider==="pollinations"){
+    const h={"Content-Type":"application/json"};if(s.pollKey)h.Authorization="Bearer "+s.pollKey;
+    const j=await httpJSON("https://text.pollinations.ai/openai",{method:"POST",headers:h,body:JSON.stringify({model:s.pollTextModel||"openai",seed:rnd(),private:true,messages:[{role:"system",content:sys},{role:"user",content:user}]})});
+    return j.choices?.[0]?.message?.content||"";
+  }
+  throw new Error("Story writing is switched off in Settings. Choose a provider, or fill in the story by hand on the Story tab.");
+}
+const STORY_SYS=`You are an award-winning children's picture book author and art director.
+Reply with ONE valid JSON object and nothing else. No markdown.
+Hard rules:
+- Everything must be 100% original: original characters, names, places and plots. Never use or imitate any existing character, brand, franchise, trademark, celebrity or real person. Never mention an artist or studio style.
+- Child-safe, warm and age-appropriate. No brand names.
+- Each character's "visual" is one fixed sentence that is reused for every illustration: species or age, body shape, exact colours, exact clothing, and two distinguishing marks. Keep it concrete and unchanging.
+- Each page "scene" describes only what is drawn: setting, action, expressions, camera angle. No text, signs or letters in the picture. Write it so it makes sense on its own.
+- Each page lists the exact character names that appear in its scene.
+Schema: {"title":"","subtitle":"","blurb":"60-90 word back-cover text without spoilers","keywords":["7 short search phrases a parent would type"],"characters":[{"name":"","role":"","visual":""}],"cover_scene":"front cover scene with the main character(s)","pages":[{"text":"","scene":"","characters":["name"]}]}`;
+function formBrief(){const f=state.form,a=AGES.find(x=>x.id===f.age);
+  return `Age group: ${a.label}. Words per page: ${a.words}.
+Language and spelling: ${f.lang}.
+Story type: ${f.genre}. Style of telling: ${f.approach}.
+Topic or lesson: ${f.topic||"none, just a delightful story"}.
+Setting or subject: ${f.setting||"your choice"}.
+Author's idea: ${f.idea||"none, invent something fresh"}.
+Characters the author wants (keep names if given): ${f.chars||"your choice"}.`}
+async function createStory(){
+  const f=state.form;let user,own=null;
+  if(f.mode==="own"){
+    own=f.own.split(/\n\s*\n/).map(s=>s.trim()).filter(Boolean);
+    if(!own.length)throw new Error("Write your story first. Separate pages with a blank line.");
+    if(state.settings.textProvider==="none"){
+      state.book=newBook({title:"Untitled",pages:own.map(t=>({text:t,scene:"",characters:[]}))});return}
+    user=`The author wrote this story. Do NOT change any page text. Return the same schema, with "pages" in the same order and count (${own.length}), copying each "text" exactly and adding "scene" and "characters". Also create characters, cover_scene, blurb, keywords and a title if missing.\n${formBrief()}\nPAGES:\n${JSON.stringify(own)}`;
+  }else{
+    user=`Write a picture book of exactly ${f.pages} story pages.\n${formBrief()}`;
+  }
+  const j=parseJSON(await llm(STORY_SYS,user));
+  if(!Array.isArray(j.pages)||!j.pages.length)throw new Error("The story came back without pages. Try again.");
+  if(own)j.pages.forEach((p,i)=>{if(own[i])p.text=own[i]});
+  state.book=newBook(j);
+}
+function newBook(j){
+  const art=ARTS.find(a=>a.id===state.form.art)||ARTS[0];
+  return {title:j.title||"Untitled",subtitle:j.subtitle||"",blurb:j.blurb||"",keywords:j.keywords||[],style:art.t,seed:rnd(),
+    characters:(j.characters||[]).map(c=>({name:c.name||"",role:c.role||"",visual:c.visual||""})),
+    cover:{scene:j.cover_scene||"",img:null,imgW:0,seedOff:0},
+    pages:j.pages.map(p=>({id:uid(),text:p.text||"",scene:p.scene||"",characters:Array.isArray(p.characters)?p.characters:[],img:null,imgW:0,seedOff:0}))};
+}
+
+/* ============ image generation ============ */
+function imgPrompt(scene,names){
+  const b=state.book;const set=(names||[]).map(n=>String(n).toLowerCase());
+  const chars=b.characters.filter(c=>set.includes(c.name.toLowerCase())).map(c=>`${c.name}: ${c.visual}`).join(". ");
+  const tail=" Same character designs and colours as every other page. No text, no letters, no words, no watermark, no logo.";
+  let head=`${b.style}.`;let mid=chars?` ${chars}.`:"";let sc=` Scene: ${scene}.`;
+  const room=900-tail.length-head.length-sc.length;if(mid.length>room)mid=mid.slice(0,Math.max(0,room));
+  return (head+mid+sc+tail).slice(0,1000);
+}
+function imgSize(){const [W,H]=TRIMS[state.form.trim];const a=(W+.125)/(H+.25),L=Number(state.settings.imgPx)||1280;
+  let w,h;if(a>=1){w=L;h=L/a}else{h=L;w=L*a}const r=n=>Math.max(256,Math.round(n/64)*64);return [r(w),r(h)]}
+async function blobToJpeg(blob){
+  const url=URL.createObjectURL(blob);
+  try{const im=await new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error("The image could not be read."));i.src=url});
+    const m=2400,sc=Math.min(1,m/Math.max(im.naturalWidth,im.naturalHeight));const c=document.createElement("canvas");
+    c.width=Math.round(im.naturalWidth*sc);c.height=Math.round(im.naturalHeight*sc);c.getContext("2d").drawImage(im,0,0,c.width,c.height);
+    return {data:c.toDataURL("image/jpeg",0.92),w:im.naturalWidth}}
+  finally{URL.revokeObjectURL(url)}
+}
+async function fetchImage(prompt,seed){
+  const s=state.settings,[w,h]=imgSize();let res;
+  if(s.imgProvider==="pollinations"){
+    const q=new URLSearchParams({model:s.imgModel||"flux",seed:String(seed),width:w,height:h,nologo:"true",private:"true"});
+    res=await fetch(`https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?${q}`,s.pollKey?{headers:{Authorization:"Bearer "+s.pollKey}}:undefined);
+  }else if(s.imgProvider==="hf"){
+    if(!s.hfToken)throw new Error("Add your Hugging Face token in Settings.");
+    res=await fetch(`https://router.huggingface.co/hf-inference/models/${s.hfModel}`,{method:"POST",headers:{Authorization:"Bearer "+s.hfToken,"Content-Type":"application/json",Accept:"image/jpeg"},body:JSON.stringify({inputs:prompt,parameters:{seed,width:w,height:h}})});
+  }else if(s.imgProvider==="custom"){
+    if(!s.customTpl)throw new Error("Add your image URL template in Settings.");
+    res=await fetch(s.customTpl.replace("{prompt}",encodeURIComponent(prompt)).replace("{seed}",seed).replace("{w}",w).replace("{h}",h));
+  }else throw new Error("Image generation is switched off. Upload pictures instead, or choose a provider in Settings.");
+  if(!res.ok){const t=await res.text().catch(()=> "");const e=new Error(`Image service said ${res.status}. ${t.slice(0,120)}`);e.status=res.status;throw e}
+  const type=res.headers.get("content-type")||"";const blob=await res.blob();
+  if(!type.startsWith("image/")&&!blob.type.startsWith("image/"))throw new Error("The image service did not return a picture.");
+  return blobToJpeg(blob);
+}
+async function fetchImageRetry(prompt,seed){
+  let last;for(let a=1;a<=4;a++){
+    if(state.abort)throw new Error("Stopped.");
+    try{return await fetchImage(prompt,seed)}catch(e){last=e;if(e.status&&e.status!==429&&e.status<500)throw e;
+      setStatus(`Waiting for the image service (try ${a} of 4)…`,{stop:true});await sleep(6000*a)}}
+  throw last;
+}
+const imgCache=new Map();
+function loadImg(src){if(!src)return Promise.resolve(null);if(imgCache.has(src))return imgCache.get(src);
+  const p=new Promise(res=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>res(null);i.src=src});imgCache.set(src,p);return p}
+async function genOne(target,isCover){
+  const b=state.book;const names=isCover?b.characters.slice(0,2).map(c=>c.name):target.characters;
+  if(!target.scene.trim())throw new Error(isCover?"Add a cover scene on the Story tab.":"This page has no scene description.");
+  const out=await fetchImageRetry(imgPrompt(target.scene,names),b.seed+(target.seedOff||0));
+  if(target.img)imgCache.delete(target.img);target.img=out.data;target.imgW=out.w;
+}
+async function generateAll(onlyMissing=true){
+  if(state.busy||!state.book)return;state.busy=true;state.abort=false;
+  const b=state.book;const jobs=[{t:b.cover,c:true,l:"cover"},...b.pages.map((p,i)=>({t:p,c:false,l:"page "+(i+1)}))].filter(j=>!onlyMissing||!j.t.img);
+  let done=0,fail=0;
+  try{for(const j of jobs){
+      if(state.abort)break;setStatus(`Drawing ${j.l} (${done+1} of ${jobs.length})…`,{progress:done/jobs.length,stop:true});
+      try{await genOne(j.t,j.c);refreshCard(j.c?"cover":b.pages.indexOf(j.t))}catch(e){fail++;if(e.message==="Stopped.")break;if(/key|token|switched off|template/i.test(e.message)){throw e}}
+      done++;autosave();if(done<jobs.length)await sleep(Number(state.settings.delay)||0)}
+    setStatus(state.abort?"Stopped. Your pictures so far are kept.":fail?`Finished with ${fail} picture(s) missing. Press Draw missing to retry.`:"All pictures are ready.",{err:fail>0&&!state.abort})}
+  catch(e){setStatus(e.message,{err:true})}
+  finally{state.busy=false}
+}
+async function regen(which){
+  if(state.busy)return;state.busy=true;state.abort=false;const b=state.book;const isC=which==="cover";const t=isC?b.cover:b.pages[which];
+  setStatus("Drawing again…",{stop:true});
+  try{t.seedOff=(t.seedOff||0)+1;await genOne(t,isC);refreshCard(which);setStatus("Done.");autosave()}catch(e){setStatus(e.message,{err:true})}finally{state.busy=false}
+}
+async function trySeeds(){
+  if(state.busy||!state.book)return;const b=state.book;if(!b.characters.length)return setStatus("Add a main character on the Story tab first.",{err:true});
+  state.busy=true;state.abort=false;const c=b.characters[0];const trials=[];state.seedTrials=trials;render();
+  try{for(let i=0;i<4;i++){if(state.abort)break;const seed=rnd();setStatus(`Trying look ${i+1} of 4…`,{progress:i/4,stop:true});
+      const out=await fetchImageRetry(`${b.style}. Character reference sheet, one character, front view, full body, plain light background. ${c.name}: ${c.visual}. No text, no letters, no watermark.`,seed);
+      trials.push({seed,img:out.data});render();if(i<3)await sleep(Number(state.settings.delay)||0)}
+    setStatus("Pick the look you like best. It locks the seed for every page.")}
+  catch(e){setStatus(e.message,{err:true})}finally{state.busy=false}
+}
+
+/* ============ page rendering (300 dpi canvas, KDP geometry) ============ */
+const BLEED=0.125, MARGIN=0.5;
+function geo(pageNo,dpi,trim){const [W,H]=trim,recto=pageNo%2===1;const tx=recto?0:Math.round(BLEED*dpi),ty=Math.round(BLEED*dpi);
+  const tw=Math.round(W*dpi),th=Math.round(H*dpi),m=Math.round(MARGIN*dpi);
+  return {recto,dpi,cw:Math.round((W+BLEED)*dpi),ch:Math.round((H+2*BLEED)*dpi),tx,ty,tw,th,
+    L:recto?tx+m:tx+m,R:tx+tw-m,T:ty+m,B:ty+th-m}}
+function fontStr(px,bold){return `${bold?"700":"400"} ${px}px "${state.form.font}","Chalkboard SE","Comic Sans MS",system-ui,sans-serif`}
+function wrap(ctx,text,maxW){const out=[];for(const para of String(text).split("\n")){const words=para.split(/\s+/).filter(Boolean);if(!words.length){out.push("");continue}
+  let line="";for(const w of words){const t=line?line+" "+w:w;if(ctx.measureText(t).width<=maxW||!line)line=t;else{out.push(line);line=w}}out.push(line)}return out}
+function fitText(ctx,text,w,h,startPt,minPt,dpi,bold){let pt=startPt,lines,px,lh;
+  for(;pt>=minPt;pt-=0.5){px=pt*dpi/72;ctx.font=fontStr(px,bold);lines=wrap(ctx,text,w);lh=px*1.35;if(lines.length*lh<=h)return {pt,px,lines,lh,fit:true}}
+  px=minPt*dpi/72;ctx.font=fontStr(px,bold);lines=wrap(ctx,text,w);return {pt:minPt,px,lines,lh:px*1.35,fit:false}}
+function drawLines(ctx,f,x,y,w,align,color,stroke){ctx.textAlign=align;ctx.textBaseline="top";ctx.fillStyle=color;
+  const ax=align==="center"?x+w/2:align==="right"?x+w:x;f.lines.forEach((l,i)=>{if(stroke){ctx.lineWidth=f.px*0.18;ctx.lineJoin="round";ctx.strokeStyle=stroke;ctx.strokeText(l,ax,y+i*f.lh)}ctx.fillText(l,ax,y+i*f.lh)})}
+function cover(ctx,img,x,y,w,h){const s=Math.max(w/img.naturalWidth,h/img.naturalHeight),sw=w/s,sh=h/s;ctx.drawImage(img,(img.naturalWidth-sw)/2,(img.naturalHeight-sh)/2,sw,sh,x,y,w,h)}
+function rrect(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
+const INK="#2A2A2A";
+function agePt(){return AGES.find(a=>a.id===state.form.age).pt}
+
+async function renderInterior(desc,pageNo,dpi){
+  const f=state.form,b=state.book,trim=TRIMS[f.trim],g=geo(pageNo,dpi,trim);
+  const c=document.createElement("canvas");c.width=g.cw;c.height=g.ch;const x=c.getContext("2d");
+  x.fillStyle=f.pageColor;x.fillRect(0,0,g.cw,g.ch);
+  const sw=g.R-g.L,m=Math.round(MARGIN*dpi);
+  if(desc.kind==="story"){
+    const img=await loadImg(desc.page.img);
+    if(f.layout==="full"){
+      if(img)cover(x,img,0,0,g.cw,g.ch);else{x.fillStyle="#E8E4DA";x.fillRect(0,0,g.cw,g.ch)}
+      const pad=Math.round(0.22*dpi),maxH=Math.round(g.th*0.3);
+      const t=fitText(x,desc.page.text,sw-2*pad,maxH-2*pad,agePt(),11,dpi);
+      const ph=Math.min(maxH,t.lines.length*t.lh+2*pad),py=g.B-ph;
+      x.fillStyle="rgba(255,253,247,0.92)";rrect(x,g.L,py,sw,ph,Math.round(0.18*dpi));x.fill();
+      drawLines(x,t,g.L+pad,py+pad,sw-2*pad,"center",INK);desc.pt=t.pt;desc.fit=t.fit;
+    }else{
+      const ib=g.ty+Math.round(g.th*0.64);
+      if(img)cover(x,img,0,0,g.cw,ib);else{x.fillStyle="#E8E4DA";x.fillRect(0,0,g.cw,ib)}
+      const top=ib+Math.round(0.25*dpi),bh=g.B-top;const t=fitText(x,desc.page.text,sw,bh,agePt(),11,dpi);
+      drawLines(x,t,g.L,top+Math.max(0,(bh-t.lines.length*t.lh)/2),sw,"center",INK);desc.pt=t.pt;desc.fit=t.fit;
+    }
+  }else if(desc.kind==="title"){
+    const img=await loadImg(b.cover.img);let y=g.T;
+    if(img){const s=Math.min(sw,Math.round(g.th*0.5));const ix=g.L+(sw-s)/2;x.save();rrect(x,ix,y,s,s,Math.round(0.2*dpi));x.clip();cover(x,img,ix,y,s,s);x.restore();y+=s+Math.round(0.4*dpi)}
+    else y=g.ty+Math.round(g.th*0.3);
+    const tt=fitText(x,b.title,sw,Math.round(g.th*0.22),40,20,dpi,true);drawLines(x,tt,g.L,y,sw,"center",INK);y+=tt.lines.length*tt.lh+Math.round(0.15*dpi);
+    if(b.subtitle){const st=fitText(x,b.subtitle,sw,Math.round(g.th*0.1),18,11,dpi);drawLines(x,st,g.L,y,sw,"center","#555");y+=st.lines.length*st.lh+Math.round(0.15*dpi)}
+    if(f.author){const at=fitText(x,"by "+f.author,sw,Math.round(g.th*0.08),18,11,dpi);drawLines(x,at,g.L,Math.min(y+Math.round(0.2*dpi),g.B-at.lh),sw,"center","#444")}
+  }else if(desc.kind==="copyright"){
+    const lines=[`Copyright © ${new Date().getFullYear()} ${f.author||"The Author"}. All rights reserved.`,"No part of this book may be reproduced without written permission from the author, except for short quotations in a review.",
+      ...(f.aiDisclosure?["Story and illustrations were created with the help of AI tools and edited by the author."]:[]),"All characters and events are fictional."];
+    const t=fitText(x,lines.join("\n\n"),sw,Math.round(g.th*0.4),10,8,dpi);drawLines(x,t,g.L,g.B-t.lines.length*t.lh,sw,"center","#555");
+  }else if(desc.kind==="end"){
+    const t=fitText(x,"The End",sw,Math.round(g.th*0.2),44,20,dpi,true);drawLines(x,t,g.L,g.ty+g.th/2-t.lh/2,sw,"center",INK);
+  }else{
+    const t=fitText(x,"Draw your favourite part of the story here!",sw,Math.round(0.8*dpi),16,10,dpi);drawLines(x,t,g.L,g.T,sw,"center","#666");
+    x.setLineDash([Math.round(0.12*dpi),Math.round(0.1*dpi)]);x.lineWidth=Math.max(2,dpi/60);x.strokeStyle="#BBB";const fy=g.T+t.lines.length*t.lh+Math.round(0.3*dpi);rrect(x,g.L,fy,sw,g.B-fy,Math.round(0.2*dpi));x.stroke();
+  }
+  return c;
+}
+function interiorPlan(){const b=state.book;const n=b.pages.length;let total=n+3;if(total<24)total=24;if(total%2)total++;
+  const plan=[{kind:"title"},{kind:"copyright"},...b.pages.map(p=>({kind:"story",page:p})),{kind:"end"}];while(plan.length<total)plan.push({kind:"blank"});return plan}
+function spineIn(total){return total*PAPERS[state.form.paper].ppi}
+async function renderCoverWrap(dpi,total){
+  const f=state.form,b=state.book,[W,H]=TRIMS[f.trim],sp=spineIn(total);
+  const cw=Math.round((2*W+sp+2*BLEED)*dpi),ch=Math.round((H+2*BLEED)*dpi);const c=document.createElement("canvas");c.width=cw;c.height=ch;const x=c.getContext("2d");
+  const bk=Math.round(BLEED*dpi),W_=Math.round(W*dpi),SP=Math.round(sp*dpi);
+  const accent=f.pageColor;x.fillStyle=accent;x.fillRect(0,0,cw,ch);
+  const fx=bk+W_+SP; // front trim left edge
+  const img=await loadImg(b.cover.img);if(img)cover(x,img,fx,0,cw-fx,ch);else{x.fillStyle="#E8E4DA";x.fillRect(fx,0,cw-fx,ch)}
+  const m=Math.round(0.5*dpi),fw=W_-2*m;
+  const tt=fitText(x,b.title,fw,Math.round(H*dpi*0.3),54,24,dpi,true);
+  x.font=fontStr(tt.px,true);drawLines(x,tt,fx+m,bk+m,fw,"center","#FFFFFF","#1B2A28");
+  if(f.author){const at=fitText(x,f.author,fw,Math.round(0.6*dpi),20,12,dpi,true);drawLines(x,at,fx+m,ch-bk-m-at.lh,fw,"center","#FFFFFF","#1B2A28")}
+  // back
+  const bw=W_-2*m,bt=fitText(x,b.blurb||b.title,bw,Math.round(H*dpi*0.45),16,10,dpi);drawLines(x,bt,bk+m,bk+m+Math.round(0.5*dpi),bw,"center",INK);
+  x.fillStyle="#FFFFFF";const bx=bk+W_-Math.round(2.2*dpi),by=ch-bk-Math.round(1.4*dpi);x.fillRect(bx,by,Math.round(2*dpi),Math.round(1.2*dpi)); // barcode area
+  return {canvas:c,spine:sp,w:2*W+sp+2*BLEED,h:H+2*BLEED};
+}
+function canvasJpeg(c,q=0.9){return new Promise((res,rej)=>c.toBlob(async b=>b?res(new Uint8Array(await b.arrayBuffer())):rej(new Error("Could not encode the page.")),"image/jpeg",q))}
+
+/* ============ minimal PDF writer (JPEG page images, TrimBox set, no fonts to embed) ============ */
+function buildPDF(pages,info){
+  const enc=new TextEncoder(),chunks=[];let len=0;const off=[];
+  const put=d=>{const u=typeof d==="string"?enc.encode(d):d;chunks.push(u);len+=u.length};
+  const begin=n=>{off[n]=len};
+  put(new Uint8Array([37,80,68,70,45,49,46,52,10,37,226,227,207,211,10]));
+  const N=pages.length,first=4;
+  begin(1);put("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n");
+  begin(2);put(`2 0 obj\n<< /Type /Pages /Count ${N} /Kids [${pages.map((_,i)=>`${first+i*3} 0 R`).join(" ")}] >>\nendobj\n`);
+  begin(3);put(`3 0 obj\n<< /Title (${info.title.replace(/[()\\]/g,"")}) /Author (${(info.author||"").replace(/[()\\]/g,"")}) /Producer (Storybook Studio) >>\nendobj\n`);
+  pages.forEach((p,i)=>{const po=first+i*3,co=po+1,io=po+2,t=p.trim.map(n=>n.toFixed(2)).join(" ");
+    begin(po);put(`${po} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${p.pw.toFixed(2)} ${p.ph.toFixed(2)}] /BleedBox [0 0 ${p.pw.toFixed(2)} ${p.ph.toFixed(2)}] /TrimBox [${t}] /Resources << /XObject << /Im0 ${io} 0 R >> >> /Contents ${co} 0 R >>\nendobj\n`);
+    const cs=`q ${p.pw.toFixed(2)} 0 0 ${p.ph.toFixed(2)} 0 0 cm /Im0 Do Q`;
+    begin(co);put(`${co} 0 obj\n<< /Length ${cs.length} >>\nstream\n${cs}\nendstream\nendobj\n`);
+    begin(io);put(`${io} 0 obj\n<< /Type /XObject /Subtype /Image /Width ${p.w} /Height ${p.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${p.jpg.length} >>\nstream\n`);put(p.jpg);put("\nendstream\nendobj\n")});
+  const total=first+N*3,xr=len;
+  put(`xref\n0 ${total}\n0000000000 65535 f \n`);for(let n=1;n<total;n++)put(String(off[n]).padStart(10,"0")+" 00000 n \n");
+  put(`trailer\n<< /Size ${total} /Root 1 0 R /Info 3 0 R >>\nstartxref\n${xr}\n%%EOF\n`);
+  return new Blob(chunks,{type:"application/pdf"});
+}
+async function pageEntry(canvas,trimIn,recto,q){const dpi=canvas.width/(trimIn[0]+BLEED);
+  const jpg=await canvasJpeg(canvas,q),pw=canvas.width/dpi*72,ph=canvas.height/dpi*72,b=BLEED*72;
+  const x0=recto?0:b,x1=recto?pw-b:pw;return {jpg,w:canvas.width,h:canvas.height,pw,ph,trim:[x0,b,x1,ph-b]}}
+async function ensureFont(){try{await Promise.race([Promise.all([document.fonts.load(`400 40px "${state.form.font}"`),document.fonts.load(`700 40px "${state.form.font}"`)]),sleep(3500)])}catch(e){}}
+async function exportInterior(){
+  if(state.busy)return;state.busy=true;state.abort=false;const b=state.book;
+  try{await ensureFont();const plan=interiorPlan(),trim=TRIMS[state.form.trim],pages=[];
+    for(let i=0;i<plan.length;i++){if(state.abort)throw new Error("Stopped.");setStatus(`Laying out page ${i+1} of ${plan.length}…`,{progress:i/plan.length,stop:true});
+      const c=await renderInterior(plan[i],i+1,300);pages.push(await pageEntry(c,trim,(i+1)%2===1,0.92));c.width=0;await sleep(0)}
+    const pdf=buildPDF(pages,{title:b.title,author:state.form.author});await saveBlob(pdf,slug(b.title)+"-interior.pdf");
+    setStatus(`Saved the interior PDF (${plan.length} pages, ${(pdf.size/1048576).toFixed(1)} MB).`)}
+  catch(e){setStatus(e.message,{err:true})}finally{state.busy=false}
+}
+async function exportCover(){
+  if(state.busy)return;state.busy=true;state.abort=false;const b=state.book;
+  try{await ensureFont();const total=interiorPlan().length;setStatus("Laying out the cover…",{stop:true});
+    const r=await renderCoverWrap(300,total);const jpg=await canvasJpeg(r.canvas,0.92);const pw=r.w*72,ph=r.h*72,bl=BLEED*72;
+    const pdf=buildPDF([{jpg,w:r.canvas.width,h:r.canvas.height,pw,ph,trim:[bl,bl,pw-bl,ph-bl]}],{title:b.title+" cover",author:state.form.author});
+    await saveBlob(pdf,slug(b.title)+"-cover-wrap.pdf");setStatus(`Saved the cover (${r.w.toFixed(3)} × ${r.h.toFixed(3)} in, spine ${r.spine.toFixed(3)} in).`)}
+  catch(e){setStatus(e.message,{err:true})}finally{state.busy=false}
+}
+async function previewPages(){
+  if(state.busy)return;state.busy=true;const box=$("#thumbs");box.innerHTML="";
+  try{await ensureFont();const plan=interiorPlan();for(let i=0;i<plan.length;i++){setStatus(`Preview ${i+1} of ${plan.length}…`,{progress:i/plan.length});
+    const c=await renderInterior(plan[i],i+1,45);box.appendChild(c);await sleep(0)}setStatus("Preview ready. Text sizes shown are what will print.")}
+  catch(e){setStatus(e.message,{err:true})}finally{state.busy=false}
+}
+const slug=s=>(s||"book").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")||"book";
+async function saveBlob(blob,name){
+  try{const file=new File([blob],name,{type:blob.type});if(/iPad|iPhone|Macintosh/.test(navigator.userAgent)&&navigator.canShare?.({files:[file]})){await navigator.share({files:[file],title:name});return}}catch(e){if(e.name==="AbortError")return}
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},4000);
+}
+
+/* ============ KDP checks ============ */
+function allText(){const b=state.book;return [b.title,b.subtitle,b.blurb,...b.keywords,...b.characters.flatMap(c=>[c.name,c.visual]),b.style,...b.pages.flatMap(p=>[p.text,p.scene]),b.cover.scene,state.form.idea,state.form.chars,state.form.author].join(" \n ").toLowerCase()}
+function runChecks(){
+  const b=state.book,f=state.form,out=[];const add=(l,t)=>out.push({l,t});const plan=interiorPlan(),n=plan.length;
+  add(n>=24&&n%2===0?"ok":"bad",`${n} pages in the interior (KDP paperbacks need at least 24).`);
+  const miss=b.pages.map((p,i)=>p.img?null:i+1).filter(Boolean);add(miss.length?"bad":"ok",miss.length?`Pictures missing on pages ${miss.join(", ")}.`:"Every story page has a picture.");
+  add(b.cover.img?"ok":"bad",b.cover.img?"Cover picture ready.":"Cover picture missing.");
+  const widths=[b.cover,...b.pages].filter(p=>p.img).map(p=>p.imgW);const [W,H]=TRIMS[f.trim];
+  if(widths.length){const need=Math.round((W+BLEED)*300);const lo=Math.min(...widths);const dpi=Math.round(lo/(W+BLEED));
+    add(lo>=need?"ok":"warn",lo>=need?"All pictures are at least 300 dpi at print size.":`The source pictures are about ${dpi} dpi at print size. The PDF is still written at 300 dpi, so KDP will accept it, but the art will look soft in print. For sharper results, upscale the pictures with a free upscaler (see README) and use Upload on each page.`)}
+  const hits=RISKY.filter(k=>new RegExp("(^|[^a-z])"+k.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"([^a-z]|$)").test(allText()));
+  add(hits.length?"bad":"ok",hits.length?`Possible trademark or copyrighted terms found: ${hits.join(", ")}. Remove or change them.`:"No well-known brand or character names found. (This list is short. You still need to check your own work.)");
+  const unnamed=b.characters.filter(c=>!c.visual.trim());add(unnamed.length?"warn":"ok",unnamed.length?"Some characters have no fixed visual description, so they will not look the same on every page.":"Every character has a fixed visual description.");
+  const small=plan.filter(p=>p.kind==="story"&&p.fit===false).length;if(plan.some(p=>p.pt))add(small?"warn":"ok",small?`${small} page(s) have very small text. Shorten the text on those pages.`:"All page text fits at a readable size.");
+  add("warn","When you publish, KDP asks whether you used AI. Answer yes for the text and the images.");
+  add("warn","Use the KDP cover calculator or template to confirm the spine width, then check the PDF in KDP's online previewer before you publish.");
+  return out;
+}
+
+/* ============ views ============ */
+const opt=(list,sel)=>list.map(o=>{const v=typeof o==="string"?o:o.id,l=typeof o==="string"?o:o.label;return `<option value="${esc(v)}"${v===sel?" selected":""}>${esc(l)}</option>`}).join("");
+const fld=(label,inner)=>`<label class="field"><span>${label}</span>${inner}</label>`;
+function viewIdea(){
+  const f=state.form,own=f.mode==="own";
+  return `<section class="panel"><div class="row"><h2>What is the book about?</h2>
+      <div class="seg" role="group" aria-label="Who writes the story"><button data-act="mode" data-v="ai" aria-pressed="${!own}">Write it for me</button><button data-act="mode" data-v="own" aria-pressed="${own}">I'll write it</button></div></div>
+    <div class="grid">
+      ${fld("Age group",`<select data-f="age">${opt(AGES,f.age)}</select>`)}
+      ${fld("Story type",`<select data-f="genre">${opt(GENRES,f.genre)}</select>`)}
+      ${fld("Style of telling",`<select data-f="approach">${opt(APPROACHES,f.approach)}</select>`)}
+      ${fld("Topic or lesson",`<select data-f="topic"><option value="">None, just a fun story</option>${Object.entries(TOPICS).map(([g,l])=>`<optgroup label="${esc(g)}">${opt(l,f.topic)}</optgroup>`).join("")}</select>`)}
+      ${fld("Setting or subject",`<input data-f="setting" list="niches" value="${esc(f.setting)}" placeholder="Pick one or type your own"><datalist id="niches">${NICHES.map(n=>`<option value="${esc(n)}">`).join("")}</datalist>`)}
+      ${fld("Art style",`<select data-f="art">${opt(ARTS,f.art)}</select>`)}
+      ${own?"":fld("Story pages",`<input type="number" data-f="pages" min="8" max="40" value="${f.pages}">`)}
+      ${fld("Language",`<input data-f="lang" value="${esc(f.lang)}">`)}
+      ${fld("Trim size",`<select data-f="trim">${opt(Object.keys(TRIMS),f.trim)}</select>`)}
+    </div>
+    ${own?`<label class="field"><span>Your story. Put a blank line between pages.</span><textarea data-f="own" rows="10" placeholder="Page one text…\n\nPage two text…">${esc(f.own)}</textarea></label>`
+      :`<label class="field"><span>Your own idea (optional)</span><textarea data-f="idea" rows="3" placeholder="For example: a shy hedgehog who is scared of the dark learns the night is full of friendly lights.">${esc(f.idea)}</textarea></label>`}
+    <label class="field"><span>Characters you want (optional)</span><input data-f="chars" value="${esc(f.chars)}" placeholder="Names and kinds, e.g. Pip the hedgehog, Grandma Wren"></label>
+    <div class="row"><button class="btn primary" data-act="create">${own?"Prepare my story":"Write the story"}</button><button class="btn" data-act="surprise">Surprise me</button>
+      <span class="note">${state.settings.textProvider==="none"?"Story writing is off in Settings.":own?"Your words stay exactly as you wrote them.":`About ${AGES.find(a=>a.id===f.age).words} words per page.`}</span></div>
+    <p class="note">This first version makes illustrated story picture books for paperback. Colouring, activity and workbook layouts are not included yet.</p>
+  </section>`;
+}
+function viewStory(){
+  const b=state.book;if(!b)return `<section class="panel empty">No story yet. Start on the Idea tab.</section>`;
+  return `<section class="panel"><h2>Title and author</h2><div class="grid">
+      ${fld("Title",`<input data-b="title" value="${esc(b.title)}">`)}${fld("Subtitle",`<input data-b="subtitle" value="${esc(b.subtitle)}">`)}${fld("Author name",`<input data-f="author" value="${esc(state.form.author)}">`)}</div>
+      <label class="field"><span>Back-cover text</span><textarea data-b="blurb" rows="3">${esc(b.blurb)}</textarea></label></section>
+    <section class="panel"><h2>Characters</h2><p class="note">These descriptions are copied into every picture prompt. Keep them exact so each character looks the same on every page.</p>
+      ${b.characters.map((c,i)=>`<div class="grid"><div class="field"><span>Name</span><input data-b="characters.${i}.name" value="${esc(c.name)}"></div>
+        <div class="field" style="grid-column:span 2"><span>Fixed look</span><textarea data-b="characters.${i}.visual" rows="2">${esc(c.visual)}</textarea></div>
+        <div class="field"><span>&nbsp;</span><button class="btn small" data-act="delchar" data-i="${i}">Remove</button></div></div>`).join("")}
+      <div class="row"><button class="btn small" data-act="addchar">Add character</button></div>
+      <label class="field"><span>Art style (added to every picture)</span><textarea data-b="style" rows="2">${esc(b.style)}</textarea></label>
+      <label class="field"><span>Cover scene</span><textarea data-b="cover.scene" rows="2">${esc(b.cover.scene)}</textarea></label></section>
+    <section class="panel"><h2>Pages</h2>
+      ${b.pages.map((p,i)=>`<div class="pg"><div class="n">${i+1}</div><div class="fields">
+        <div class="field"><span>Text</span><textarea data-b="pages.${i}.text" rows="3">${esc(p.text)}</textarea></div>
+        <div class="field"><span>Picture scene</span><textarea data-b="pages.${i}.scene" rows="3">${esc(p.scene)}</textarea></div>
+        <div class="field"><span>Characters in the picture (comma separated)</span><input data-chars="${i}" value="${esc(p.characters.join(", "))}">
+          <div class="row"><button class="btn small" data-act="up" data-i="${i}" ${i?"":"disabled"}>Move up</button><button class="btn small" data-act="down" data-i="${i}" ${i<b.pages.length-1?"":"disabled"}>Move down</button><button class="btn small" data-act="delpage" data-i="${i}">Delete</button></div></div></div></div>`).join("")}
+      <div class="row"><button class="btn small" data-act="addpage">Add page</button><button class="btn primary" data-tab="pics">Continue to pictures</button></div></section>`;
+}
+function cardHTML(which){
+  const b=state.book,isC=which==="cover",t=isC?b.cover:b.pages[which];
+  return `<div class="card" data-card="${which}"><div class="pic">${t.img?`<img alt="${isC?"Cover":"Page "+(which+1)} illustration" src="${t.img}">`:"No picture yet"}</div>
+    <div class="body"><strong>${isC?"Cover":"Page "+(which+1)}</strong>${isC?"":`<div class="txt">${esc(t.text)}</div>`}
+      <div class="row"><button class="btn small" data-act="regen" data-w="${which}">${t.img?"Redraw":"Draw"}</button><button class="btn small" data-act="upload" data-w="${which}">Upload</button><button class="btn small" data-act="copyprompt" data-w="${which}">Copy prompt</button></div></div></div>`;
+}
+function refreshCard(which){const el=$(`[data-card="${which}"]`);if(el)el.outerHTML=cardHTML(which)}
+function viewPics(){
+  const b=state.book;if(!b)return `<section class="panel empty">No story yet. Start on the Idea tab.</section>`;
+  const done=b.pages.filter(p=>p.img).length;
+  return `<section class="panel"><h2>Keep the characters looking the same</h2>
+      <p class="note">Every picture uses the same seed, the same art style and the same fixed character descriptions. First, pick the best-looking version of your main character. That choice sets the seed for the whole book.</p>
+      <div class="row"><button class="btn" data-act="seeds">Try 4 looks for ${esc(b.characters[0]?.name||"the main character")}</button><span class="note">Current seed: ${b.seed}</span></div>
+      ${state.seedTrials?`<div class="seeds">${state.seedTrials.map(s=>`<button data-act="useseed" data-s="${s.seed}" aria-pressed="${b.seed===s.seed}"><img alt="Character look, seed ${s.seed}" src="${s.img}"></button>`).join("")}</div>`:""}</section>
+    <section class="panel"><div class="row"><h2>Illustrations</h2><span class="note">${done} of ${b.pages.length} pages drawn</span></div>
+      <div class="row"><button class="btn primary" data-act="drawall">Draw missing pictures</button><button class="btn" data-act="copyall">Copy all prompts</button></div>
+      <p class="note">Free image services are slow. Expect 10 to 40 seconds each. You can leave this tab open and come back. Use Redraw to try a new version of any page, or Upload to use a picture from another free tool.</p>
+      <div class="cards">${cardHTML("cover")}${b.pages.map((_,i)=>cardHTML(i)).join("")}</div></section>`;
+}
+function viewExport(){
+  const b=state.book;if(!b)return `<section class="panel empty">No story yet. Start on the Idea tab.</section>`;const f=state.form;const n=interiorPlan().length;
+  const checks=runChecks();
+  return `<section class="panel"><h2>Layout</h2><div class="grid">
+      ${fld("Page layout",`<select data-f="layout"><option value="top"${f.layout==="top"?" selected":""}>Picture on top, text below</option><option value="full"${f.layout==="full"?" selected":""}>Full-page picture, text panel</option></select>`)}
+      ${fld("Text font",`<select data-f="font">${opt(FONTS,f.font)}</select>`)}
+      ${fld("Page colour",`<input type="color" data-f="pageColor" value="${f.pageColor}">`)}
+      ${fld("Trim size",`<select data-f="trim">${opt(Object.keys(TRIMS),f.trim)}</select>`)}
+      ${fld("Paper and ink",`<select data-f="paper">${Object.entries(PAPERS).map(([k,v])=>`<option value="${k}"${k===f.paper?" selected":""}>${esc(v.l)}</option>`).join("")}</select>`)}
+      ${fld("Author name",`<input data-f="author" value="${esc(f.author)}">`)}</div>
+    <label class="row"><input type="checkbox" data-fc="aiDisclosure" ${f.aiDisclosure?"checked":""}> Add an AI-assistance line to the copyright page</label>
+    <p class="note">${n} pages in total. Spine width about ${spineIn(n).toFixed(3)} in. Pages are ${(TRIMS[f.trim][0]+BLEED).toFixed(3)} × ${(TRIMS[f.trim][1]+2*BLEED).toFixed(3)} in with 0.125 in bleed, and all text sits at least 0.5 in inside the trim edge.</p></section>
+    <section class="panel"><h2>KDP check</h2>${checks.map(c=>`<div class="chk"><span class="pill ${c.l}">${c.l==="ok"?"Pass":c.l==="warn"?"Check":"Fix"}</span><span>${esc(c.t)}</span></div>`).join("")}</section>
+    <section class="panel"><h2>Make the files</h2><div class="row"><button class="btn" data-act="preview">Preview all pages</button><button class="btn primary" data-act="expint">Save interior PDF</button><button class="btn primary" data-act="expcov">Save cover PDF</button></div>
+      <div class="row"><button class="btn" data-act="saveproj">Save project file</button><button class="btn" data-act="loadproj">Open project file</button></div>
+      <div id="thumbs" class="thumbs"></div></section>
+    <section class="panel"><h2>Listing text for KDP</h2><div class="copybox">${esc(b.title)}${b.subtitle?"\n"+esc(b.subtitle):""}\n\n${esc(b.blurb)}\n\nKeywords: ${esc((b.keywords||[]).join(" | "))}</div>
+      <div class="row"><button class="btn small" data-act="copylisting">Copy</button></div></section>`;
+}
+function viewSettings(){
+  const s=state.settings;
+  const sel=(k,list)=>`<select data-s="${k}">${list.map(([v,l])=>`<option value="${v}"${s[k]===v?" selected":""}>${esc(l)}</option>`).join("")}</select>`;
+  const inp=(k,type="text",ph="")=>`<input data-s="${k}" type="${type}" value="${esc(s[k])}" placeholder="${esc(ph)}" autocomplete="off">`;
+  return `<section class="panel"><div class="row"><h2>Settings</h2><button class="btn small" data-act="closesettings">Done</button></div>
+    <p class="note">Keys are saved only in this browser on this device.</p>
+    <h3>Story writer</h3><div class="grid">
+      ${fld("Provider",sel("textProvider",[["pollinations","Pollinations (no key)"],["gemini","Google Gemini (free key)"],["openai","OpenAI-compatible (Groq, OpenRouter…)"],["none","Off (I write everything)"]]))}
+      ${fld("Gemini key",inp("geminiKey","password"))}${fld("Gemini model",inp("geminiModel"))}
+      ${fld("Compatible base URL",inp("oaBase"))}${fld("Compatible key",inp("oaKey","password"))}${fld("Compatible model",inp("oaModel"))}</div>
+    <h3>Illustrations</h3><div class="grid">
+      ${fld("Provider",sel("imgProvider",[["pollinations","Pollinations (no key)"],["hf","Hugging Face (free token)"],["custom","Custom URL"],["none","Off (I upload pictures)"]]))}
+      ${fld("Image model",inp("imgModel"))}${fld("Pollinations key (optional)",inp("pollKey","password"))}
+      ${fld("Hugging Face token",inp("hfToken","password"))}${fld("Hugging Face model",inp("hfModel"))}
+      ${fld("Custom URL, with {prompt} {seed} {w} {h}",inp("customTpl"))}
+      ${fld("Picture size, long side (px)",inp("imgPx","number"))}${fld("Pause between pictures (ms)",inp("delay","number"))}</div></section>`;
+}
+
+/* ============ render & events ============ */
+function render(){
+  $$(".tab").forEach(t=>t.setAttribute("aria-selected",String(t.dataset.tab===state.tab)));
+  const v=state.showSettings?viewSettings():({idea:viewIdea,story:viewStory,pics:viewPics,export:viewExport}[state.tab])();
+  $("#view").innerHTML=v;
+}
+document.addEventListener("input",e=>{const t=e.target;
+  if(t.dataset.f){state.form[t.dataset.f]=t.type==="number"?Number(t.value):t.value;autosave()}
+  else if(t.dataset.b){setPath(state.book,t.dataset.b,t.value);autosave()}
+  else if(t.dataset.chars!=null){state.book.pages[+t.dataset.chars].characters=t.value.split(",").map(s=>s.trim()).filter(Boolean);autosave()}
+  else if(t.dataset.s){state.settings[t.dataset.s]=t.type==="number"?Number(t.value):t.value.trim();saveSettings()}});
+document.addEventListener("change",e=>{const t=e.target;
+  if(t.dataset.fc){state.form[t.dataset.fc]=t.checked;autosave()}
+  if(t.dataset.f&&["trim","paper","layout","font","age"].includes(t.dataset.f))render();
+  if(t.dataset.s&&t.tagName==="SELECT")render()});
+let upTarget=null;
+document.addEventListener("click",async e=>{
+  const tabBtn=e.target.closest("[data-tab]");if(tabBtn){state.tab=tabBtn.dataset.tab;state.showSettings=false;render();scrollTo(0,0);return}
+  const el=e.target.closest("[data-act]");if(!el)return;const a=el.dataset.act,i=el.dataset.i!=null?+el.dataset.i:null,b=state.book;
+  const w=el.dataset.w==="cover"?"cover":el.dataset.w!=null?+el.dataset.w:null;
+  switch(a){
+    case"settings":state.showSettings=true;render();break;
+    case"closesettings":state.showSettings=false;render();break;
+    case"newbook":if(el.dataset.sure){state.book=null;state.form={...defaultForm,author:state.form.author};state.seedTrials=null;state.tab="idea";autosave();render();setStatus("Started a new book.");el.textContent="New book";delete el.dataset.sure}
+      else{el.dataset.sure=1;el.textContent="Tap again to clear";setTimeout(()=>{delete el.dataset.sure;el.textContent="New book"},3500)}break;
+    case"mode":state.form.mode=el.dataset.v;render();break;
+    case"surprise":Object.assign(state.form,{age:pick(AGES).id,genre:pick(GENRES),approach:pick(APPROACHES),topic:pick(Object.values(TOPICS).flat()),setting:pick(NICHES),art:pick(ARTS).id});render();break;
+    case"create":if(state.busy)break;state.busy=true;setStatus(state.form.mode==="own"?"Preparing your story…":"Writing your story. This can take up to a minute…");
+      try{await createStory();state.seedTrials=null;state.tab="story";autosave();render();setStatus("Story ready. Edit anything you like.")}catch(err){setStatus(err.message,{err:true})}finally{state.busy=false}break;
+    case"addchar":b.characters.push({name:"",role:"",visual:""});render();break;
+    case"delchar":b.characters.splice(i,1);render();break;
+    case"addpage":b.pages.push({id:uid(),text:"",scene:"",characters:[],img:null,imgW:0,seedOff:0});render();break;
+    case"delpage":b.pages.splice(i,1);render();autosave();break;
+    case"up":[b.pages[i-1],b.pages[i]]=[b.pages[i],b.pages[i-1]];render();autosave();break;
+    case"down":[b.pages[i+1],b.pages[i]]=[b.pages[i],b.pages[i+1]];render();autosave();break;
+    case"drawall":generateAll(true);break;
+    case"regen":regen(w);break;
+    case"seeds":trySeeds();break;
+    case"useseed":b.seed=+el.dataset.s;render();autosave();setStatus("Seed locked. Redraw any page to use it.");break;
+    case"upload":upTarget=w;$("#upfile").value="";$("#upfile").click();break;
+    case"copyprompt":{const t=w==="cover"?b.cover:b.pages[w];await copy(imgPrompt(t.scene,w==="cover"?b.characters.slice(0,2).map(c=>c.name):t.characters));break}
+    case"copyall":await copy(["COVER: "+imgPrompt(b.cover.scene,b.characters.slice(0,2).map(c=>c.name)),...b.pages.map((p,k)=>`PAGE ${k+1}: ${imgPrompt(p.scene,p.characters)}`)].join("\n\n"));break;
+    case"copylisting":await copy($(".copybox").textContent);break;
+    case"preview":previewPages();break;
+    case"expint":exportInterior();break;
+    case"expcov":exportCover();break;
+    case"saveproj":await saveBlob(new Blob([JSON.stringify({form:state.form,book:state.book})],{type:"application/json"}),slug(b.title)+".storybook.json");break;
+    case"loadproj":$("#loadfile").click();break;
+  }});
+async function copy(t){try{await navigator.clipboard.writeText(t);setStatus("Copied.")}catch(e){const ta=document.createElement("textarea");ta.value=t;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");setStatus("Copied.")}catch(_){setStatus("Copy was blocked. Select the text and copy it by hand.",{err:true})}ta.remove()}}
+$("#upfile").addEventListener("change",async e=>{const file=e.target.files[0];if(!file||upTarget==null)return;
+  try{const out=await blobToJpeg(file);const t=upTarget==="cover"?state.book.cover:state.book.pages[upTarget];if(t.img)imgCache.delete(t.img);t.img=out.data;t.imgW=out.w;refreshCard(upTarget);autosave();setStatus(`Picture added (${out.w} px wide).`)}
+  catch(err){setStatus(err.message,{err:true})}});
+$("#loadfile").addEventListener("change",async e=>{const file=e.target.files[0];if(!file)return;try{const j=JSON.parse(await file.text());state.form={...defaultForm,...j.form};state.book=j.book;state.tab="story";render();autosave();setStatus("Project opened.")}catch(err){setStatus("That file is not a Storybook Studio project.",{err:true})}});
+
+/* ============ boot ============ */
+(async()=>{render();const saved=await dbGet();if(saved?.book){state.form={...defaultForm,...saved.form};state.book=saved.book;state.tab="story";render();setStatus("Restored your last book.")}})();
+</script>
+</body>
+</html>

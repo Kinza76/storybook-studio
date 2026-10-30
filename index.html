@@ -188,22 +188,23 @@ async function llm(sys,user){
   if(s.textProvider==="gemini"){
     if(!s.geminiKey)throw new Error("Add your Gemini key in Settings (free from Google AI Studio).");
     const j=await httpJSON(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(s.geminiModel)}:generateContent`,{method:"POST",headers:{"Content-Type":"application/json","x-goog-api-key":s.geminiKey},
-      body:JSON.stringify({systemInstruction:{parts:[{text:sys}]},contents:[{role:"user",parts:[{text:user}]}],generationConfig:{responseMimeType:"application/json",temperature:0.9}})});
+      body:JSON.stringify({systemInstruction:{parts:[{text:sys}]},contents:[{role:"user",parts:[{text:user}]}],generationConfig:{responseMimeType:"application/json",temperature:0.9,maxOutputTokens:16384}})});
     return (j.candidates?.[0]?.content?.parts||[]).map(p=>p.text).join("");
   }
   if(s.textProvider==="openai"){
     if(!s.oaKey)throw new Error("Add the API key for your OpenAI-compatible service in Settings.");
     const j=await httpJSON(s.oaBase.replace(/\/$/,"")+"/chat/completions",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+s.oaKey},
-      body:JSON.stringify({model:s.oaModel,temperature:0.9,messages:[{role:"system",content:sys},{role:"user",content:user}]})});
+      body:JSON.stringify({model:s.oaModel,temperature:0.9,max_tokens:8000,messages:[{role:"system",content:sys},{role:"user",content:user}]})});
     return j.choices?.[0]?.message?.content||"";
   }
   if(s.textProvider==="pollinations"){
     const h={"Content-Type":"application/json"};if(s.pollKey)h.Authorization="Bearer "+s.pollKey;
-    const call=model=>httpJSON("https://text.pollinations.ai/openai",{method:"POST",headers:h,body:JSON.stringify({...(model?{model}:{}),seed:rnd(),private:true,messages:[{role:"system",content:sys},{role:"user",content:user}]})});
+    let maxTok=8000;const call=model=>httpJSON("https://text.pollinations.ai/openai",{method:"POST",headers:h,body:JSON.stringify({...(model?{model}:{}),max_tokens:maxTok,reasoning_effort:"low",seed:rnd(),private:true,messages:[{role:"system",content:sys},{role:"user",content:user}]})});
     let model=s.pollTextModel||"",j;
     for(let a=1;;a++){
       try{j=await call(model);break}
       catch(e){
+        if(/output_token_limit|token limit/i.test(e.message)&&maxTok<32000){maxTok*=2;setStatus("The model ran out of room while thinking. Trying again with more room…",{stop:true});continue}
         if(model&&(e.status===404||e.status===400)){model="";continue}
         if((e.status===402||e.status===429)&&a<=3){setStatus(`Pollinations asks for a short pause (free limit). Trying again in 35 seconds (${a} of 3)…`,{stop:true});await sleep(35000);if(state.abort)throw new Error("Stopped.");continue}
         throw e}}

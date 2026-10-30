@@ -160,11 +160,11 @@ const RISKY=["mickey","minnie","disney","pixar","pokemon","pikachu","mario","lui
 
 /* ============ state & storage ============ */
 const defaultSettings={textProvider:"pollinations",geminiKey:"",geminiModel:"gemini-2.5-flash",oaBase:"https://api.groq.com/openai/v1",oaKey:"",oaModel:"llama-3.3-70b-versatile",
-  pollTextModel:"openai/gpt-4o-mini",imgProvider:"pollinations",imgModel:"flux",pollKey:"",hfToken:"",hfModel:"black-forest-labs/FLUX.1-schnell",customTpl:"",imgPx:1280,delay:3000};
+  pollTextModel:"",imgProvider:"pollinations",imgModel:"",pollKey:"",hfToken:"",hfModel:"black-forest-labs/FLUX.1-schnell",customTpl:"",imgPx:1280,delay:46000,v:2};
 const defaultForm={mode:"ai",age:"preschool",genre:"Bedtime story",approach:"Read-aloud",topic:"",setting:"",idea:"",art:"watercolor",pages:20,lang:"English (UK)",chars:"",own:"",
   author:"",trim:"8.5x8.5",paper:"std",layout:"top",pageColor:"#FFFDF7",font:"Fredoka",aiDisclosure:true};
 const state={tab:"idea",settings:{...defaultSettings},form:{...defaultForm},book:null,busy:false,abort:false,showSettings:false,seedTrials:null,thumbs:false};
-try{Object.assign(state.settings,JSON.parse(localStorage.getItem("sbs_settings")||"{}"))}catch(e){}\nif(!state.settings.pollTextModel||state.settings.pollTextModel==="openai")state.settings.pollTextModel="openai/gpt-4o-mini";
+try{const sv=JSON.parse(localStorage.getItem("sbs_settings")||"{}");if(sv.v!==2){delete sv.pollTextModel;delete sv.imgModel;delete sv.delay}Object.assign(state.settings,sv,{v:2})}catch(e){}
 function saveSettings(){try{localStorage.setItem("sbs_settings",JSON.stringify(state.settings))}catch(e){}}
 
 let db=null;
@@ -181,16 +181,8 @@ function setStatus(msg,o={}){const s=$("#status");$("#smsg").textContent=msg;s.c
 $("#stopbtn").onclick=()=>{state.abort=true;setStatus("Stopping after the current step…",{stop:true})};
 
 /* ============ text generation ============ */
-function parseJSON(t){
-  t=String(t).trim().replace(/^```(?:json)?/i,"").replace(/```$/,"").trim();
-  const a=t.indexOf("{");if(a<0)throw new Error("The AI did not return a JSON story. Try again with fewer pages.");
-  let depth=0,inStr=false,escp=false,end=-1;
-  for(let i=a;i<t.length;i++){const c=t[i];if(inStr){if(escp)escp=false;else if(c==="\\")escp=true;else if(c==='"')inStr=false;continue}
-    if(c==='"'){inStr=true;continue}if(c==="{")depth++;else if(c==="}"&&--depth===0){end=i+1;break}}
-  if(end<0)throw new Error("The AI response was incomplete. Try again; your existing project is unchanged.");
-  let raw=t.slice(a,end);try{return JSON.parse(raw)}catch(e){raw=raw.replace(/,\s*([}\]])/g,"$1");try{return JSON.parse(raw)}catch(e2){throw new Error("The AI returned invalid story data. Try a shorter story or use Gemini in Settings.")}}
-}
-async function httpJSON(url,opt){const r=await fetch(url,opt);const t=await r.text();if(!r.ok)throw new Error(`HTTP ${r.status}: ${t.slice(0,200)}`);try{return JSON.parse(t)}catch(e){throw new Error("Unexpected reply: "+t.slice(0,160))}}
+function parseJSON(t){t=String(t).trim().replace(/^```(?:json)?/i,"").replace(/```$/,"").trim();const a=t.indexOf("{"),b=t.lastIndexOf("}");if(a<0||b<0)throw new Error("The model did not return JSON. Try again.");return JSON.parse(t.slice(a,b+1))}
+async function httpJSON(url,opt){const r=await fetch(url,opt);const t=await r.text();if(!r.ok){const e=new Error(`HTTP ${r.status}: ${t.slice(0,300)}`);e.status=r.status;throw e}try{return JSON.parse(t)}catch(e){throw new Error("Unexpected reply: "+t.slice(0,160))}}
 async function llm(sys,user){
   const s=state.settings;
   if(s.textProvider==="gemini"){
@@ -207,7 +199,14 @@ async function llm(sys,user){
   }
   if(s.textProvider==="pollinations"){
     const h={"Content-Type":"application/json"};if(s.pollKey)h.Authorization="Bearer "+s.pollKey;
-    const j=await httpJSON("https://text.pollinations.ai/openai",{method:"POST",headers:h,body:JSON.stringify({model:s.pollTextModel||"openai/gpt-4o-mini",max_tokens:8192,temperature:0.4,seed:rnd(),private:true,messages:[{role:"system",content:sys+"\\nReturn compact JSON. Keep each page text to 1-3 short sentences and each scene to one concise sentence. Do not add explanations."},{role:"user",content:user}]})});
+    const call=model=>httpJSON("https://text.pollinations.ai/openai",{method:"POST",headers:h,body:JSON.stringify({...(model?{model}:{}),seed:rnd(),private:true,messages:[{role:"system",content:sys},{role:"user",content:user}]})});
+    let model=s.pollTextModel||"",j;
+    for(let a=1;;a++){
+      try{j=await call(model);break}
+      catch(e){
+        if(model&&(e.status===404||e.status===400)){model="";continue}
+        if((e.status===402||e.status===429)&&a<=3){setStatus(`Pollinations asks for a short pause (free limit). Trying again in 35 seconds (${a} of 3)…`,{stop:true});await sleep(35000);if(state.abort)throw new Error("Stopped.");continue}
+        throw e}}
     return j.choices?.[0]?.message?.content||"";
   }
   throw new Error("Story writing is switched off in Settings. Choose a provider, or fill in the story by hand on the Story tab.");
@@ -230,31 +229,20 @@ Setting or subject: ${f.setting||"your choice"}.
 Author's idea: ${f.idea||"none, invent something fresh"}.
 Characters the author wants (keep names if given): ${f.chars||"your choice"}.`}
 async function createStory(){
-  const f=state.form;let own=null;
+  const f=state.form;let user,own=null;
   if(f.mode==="own"){
     own=f.own.split(/\n\s*\n/).map(s=>s.trim()).filter(Boolean);
     if(!own.length)throw new Error("Write your story first. Separate pages with a blank line.");
-    if(state.settings.textProvider==="none"){state.book=newBook({title:"Untitled",pages:own.map(t=>({text:t,scene:"",characters:[]}))});return}
+    if(state.settings.textProvider==="none"){
+      state.book=newBook({title:"Untitled",pages:own.map(t=>({text:t,scene:"",characters:[]}))});return}
+    user=`The author wrote this story. Do NOT change any page text. Return the same schema, with "pages" in the same order and count (${own.length}), copying each "text" exactly and adding "scene" and "characters". Also create characters, cover_scene, blurb, keywords and a title if missing.\n${formBrief()}\nPAGES:\n${JSON.stringify(own)}`;
+  }else{
+    user=`Write a picture book of exactly ${f.pages} story pages.\n${formBrief()}`;
   }
-  const total=own?own.length:Math.max(8,Math.min(120,Number(f.pages)||20));
-  const batchSize=3;let bookData=null;const allPages=[];
-  for(let start=0;start<total;start+=batchSize){
-    if(state.abort)throw new Error("Stopped. No partial story was saved.");
-    const count=Math.min(batchSize,total-start);let sys=STORY_SYS,user;
-    if(start===0){
-      user=own
-        ? `Create metadata and illustration directions for exactly these ${count} supplied pages. Copy every page text exactly. Return the full schema.\n${formBrief()}\nPAGES:\n${JSON.stringify(own.slice(start,start+count))}`
-        : `Create metadata and exactly ${count} opening pages of a larger ${total}-page picture book. Keep the plot open; do not conclude yet.\n${formBrief()}`;
-    }else{
-      sys=`Continue an original children's picture book. Return ONLY valid JSON: {"pages":[{"text":"","scene":"","characters":["name"]}]}. No markdown. Keep character names and visual continuity consistent. Exactly ${count} pages. Do not conclude until the final batch.`;
-      user=`Book: ${bookData.title||"Untitled"}. Premise: ${bookData.blurb||f.idea||f.genre}. Characters and fixed looks: ${JSON.stringify(bookData.characters||[])}. Previous pages: ${allPages.slice(-4).map(p=>p.text).join(" ")}. Write the next ${count} pages. Language: ${f.lang}. Age: ${f.age}. Words per page: ${AGES.find(x=>x.id===f.age).words}.`;
-    }
-    setStatus(`Writing pages ${start+1}–${start+count} of ${total}…`,{progress:start/total,stop:true});
-    const j=parseJSON(await llm(sys,user));
-    if(!Array.isArray(j.pages)||j.pages.length!==count)throw new Error(`The AI returned an incomplete batch for pages ${start+1}–${start+count}. Try a smaller batch or switch story provider.`);
-    if(start===0)bookData=j;if(own)j.pages.forEach((p,i)=>{p.text=own[start+i]});allPages.push(...j.pages);
-  }
-  bookData.pages=allPages;state.book=newBook(bookData);
+  const j=parseJSON(await llm(STORY_SYS,user));
+  if(!Array.isArray(j.pages)||!j.pages.length)throw new Error("The story came back without pages. Try again.");
+  if(own)j.pages.forEach((p,i)=>{if(own[i])p.text=own[i]});
+  state.book=newBook(j);
 }
 function newBook(j){
   const art=ARTS.find(a=>a.id===state.form.art)||ARTS[0];
@@ -286,8 +274,10 @@ async function blobToJpeg(blob){
 async function fetchImage(prompt,seed){
   const s=state.settings,[w,h]=imgSize();let res;
   if(s.imgProvider==="pollinations"){
-    const q=new URLSearchParams({model:s.imgModel||"flux",seed:String(seed),width:w,height:h,nologo:"true",private:"true"});
-    res=await fetch(`https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?${q}`,s.pollKey?{headers:{Authorization:"Bearer "+s.pollKey}}:undefined);
+    const go=model=>{const q=new URLSearchParams({seed:String(seed),width:w,height:h,nologo:"true",private:"true"});if(model)q.set("model",model);
+      return fetch(`https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?${q}`,s.pollKey?{headers:{Authorization:"Bearer "+s.pollKey}}:undefined)};
+    res=await go(s.imgModel);
+    if(!res.ok&&s.imgModel&&(res.status===400||res.status===404))res=await go("");
   }else if(s.imgProvider==="hf"){
     if(!s.hfToken)throw new Error("Add your Hugging Face token in Settings.");
     res=await fetch(`https://router.huggingface.co/hf-inference/models/${s.hfModel}`,{method:"POST",headers:{Authorization:"Bearer "+s.hfToken,"Content-Type":"application/json",Accept:"image/jpeg"},body:JSON.stringify({inputs:prompt,parameters:{seed,width:w,height:h}})});
@@ -303,8 +293,8 @@ async function fetchImage(prompt,seed){
 async function fetchImageRetry(prompt,seed){
   let last;for(let a=1;a<=4;a++){
     if(state.abort)throw new Error("Stopped.");
-    try{return await fetchImage(prompt,seed)}catch(e){last=e;if(e.status&&e.status!==429&&e.status<500)throw e;
-      setStatus(`Waiting for the image service (try ${a} of 4)…`,{stop:true});await sleep(6000*a)}}
+    try{return await fetchImage(prompt,seed)}catch(e){last=e;const lim=e.status===402||e.status===429;if(e.status&&!lim&&e.status<500)throw e;
+      setStatus(lim?`The free image service asks for a pause between pictures. Waiting 50 seconds (try ${a} of 4)…`:`Waiting for the image service (try ${a} of 4)…`,{stop:true});await sleep(lim?50000:6000*a)}}
   throw last;
 }
 const imgCache=new Map();
@@ -508,7 +498,7 @@ function viewIdea(){
       ${fld("Topic or lesson",`<select data-f="topic"><option value="">None, just a fun story</option>${Object.entries(TOPICS).map(([g,l])=>`<optgroup label="${esc(g)}">${opt(l,f.topic)}</optgroup>`).join("")}</select>`)}
       ${fld("Setting or subject",`<input data-f="setting" list="niches" value="${esc(f.setting)}" placeholder="Pick one or type your own"><datalist id="niches">${NICHES.map(n=>`<option value="${esc(n)}">`).join("")}</datalist>`)}
       ${fld("Art style",`<select data-f="art">${opt(ARTS,f.art)}</select>`)}
-      ${own?"":fld("Story pages",`<input type="number" data-f="pages" min="8" max="120" value="${f.pages}">`)}
+      ${own?"":fld("Story pages",`<input type="number" data-f="pages" min="8" max="40" value="${f.pages}">`)}
       ${fld("Language",`<input data-f="lang" value="${esc(f.lang)}">`)}
       ${fld("Trim size",`<select data-f="trim">${opt(Object.keys(TRIMS),f.trim)}</select>`)}
     </div>
@@ -585,15 +575,17 @@ function viewSettings(){
   return `<section class="panel"><div class="row"><h2>Settings</h2><button class="btn small" data-act="closesettings">Done</button></div>
     <p class="note">Keys are saved only in this browser on this device.</p>
     <h3>Story writer</h3><div class="grid">
-      ${fld("Provider",sel("textProvider",[["pollinations","Pollinations (no key)"],["gemini","Google Gemini (free key)"],["openai","OpenAI-compatible (Groq, OpenRouter…)"],["none","Off (I write everything)"]]))}
+      ${fld("Provider",sel("textProvider",[["pollinations","Pollinations (no key, slow limits)"],["gemini","Google Gemini (free key)"],["openai","OpenAI-compatible (Groq, OpenRouter…)"],["none","Off (I write everything)"]]))}
+      ${fld("Pollinations text model (leave empty for the default)",`<input data-s="pollTextModel" list="pmodels" value="${esc(s.pollTextModel)}" autocomplete="off" placeholder="empty = default"><datalist id="pmodels">${(state.pollModels||[]).map(m=>`<option value="${esc(m)}">`).join("")}</datalist>`)}
+      <div class="field"><span>&nbsp;</span><button class="btn small" data-act="listmodels">Show available free models</button></div>
       ${fld("Gemini key",inp("geminiKey","password"))}${fld("Gemini model",inp("geminiModel"))}
       ${fld("Compatible base URL",inp("oaBase"))}${fld("Compatible key",inp("oaKey","password"))}${fld("Compatible model",inp("oaModel"))}</div>
     <h3>Illustrations</h3><div class="grid">
       ${fld("Provider",sel("imgProvider",[["pollinations","Pollinations (no key)"],["hf","Hugging Face (free token)"],["custom","Custom URL"],["none","Off (I upload pictures)"]]))}
-      ${fld("Image model",inp("imgModel"))}${fld("Pollinations key (optional)",inp("pollKey","password"))}
+      ${fld("Image model (leave empty for the default)",inp("imgModel"))}${fld("Pollinations key (optional)",inp("pollKey","password"))}
       ${fld("Hugging Face token",inp("hfToken","password"))}${fld("Hugging Face model",inp("hfModel"))}
       ${fld("Custom URL, with {prompt} {seed} {w} {h}",inp("customTpl"))}
-      ${fld("Picture size, long side (px)",inp("imgPx","number"))}${fld("Pause between pictures (ms)",inp("delay","number"))}</div></section>`;
+      ${fld("Picture size, long side (px)",inp("imgPx","number"))}${fld("Pause between pictures (ms)",inp("delay","number"))}</div><p class="note">The free Pollinations service allows one picture about every 45 seconds, so a 20-page book takes around 15 to 20 minutes. If you use another image service, you can lower the pause.</p></section>`;
 }
 
 /* ============ render & events ============ */
@@ -618,6 +610,9 @@ document.addEventListener("click",async e=>{
   const w=el.dataset.w==="cover"?"cover":el.dataset.w!=null?+el.dataset.w:null;
   switch(a){
     case"settings":state.showSettings=true;render();break;
+    case"listmodels":try{setStatus("Asking Pollinations which models are free…");const r=await fetch("https://text.pollinations.ai/models");const j=await r.json();
+      state.pollModels=(Array.isArray(j)?j:Object.values(j)).map(m=>typeof m==="string"?m:m.name||m.id).filter(Boolean);render();setStatus("Free models: "+state.pollModels.join(", ")+". Pick one in the model box, or leave it empty.")}
+      catch(err){setStatus("Could not load the model list ("+err.message+"). Leave the model box empty to use the default.",{err:true})}break;
     case"closesettings":state.showSettings=false;render();break;
     case"newbook":if(el.dataset.sure){state.book=null;state.form={...defaultForm,author:state.form.author};state.seedTrials=null;state.tab="idea";autosave();render();setStatus("Started a new book.");el.textContent="New book";delete el.dataset.sure}
       else{el.dataset.sure=1;el.textContent="Tap again to clear";setTimeout(()=>{delete el.dataset.sure;el.textContent="New book"},3500)}break;
